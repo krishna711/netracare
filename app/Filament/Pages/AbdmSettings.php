@@ -169,6 +169,7 @@ class AbdmSettings extends Page implements HasForms
                 ->icon('heroicon-o-bolt')
                 ->color('primary')
                 ->action(function (AbdmClient $client) {
+                    $this->save();
                     $client->loadConfig();
                     $this->testResult = $client->testConnection();
 
@@ -194,17 +195,20 @@ class AbdmSettings extends Page implements HasForms
                 ->requiresConfirmation()
                 ->modalHeading('Update ABDM Bridge URL (NHA Step 1)')
                 ->modalDescription('This registers your public HTTPS endpoint with the ABDM Gateway for callbacks and Scan & Share.')
-                ->action(function (AbdmBridgeService $bridgeService) {
+                ->action(function (AbdmBridgeService $bridgeService, AbdmClient $client) {
                     try {
+                        $this->save();
+                        $client->loadConfig();
+
                         $url = $this->data['public_url'] ?? config('abdm.public_callback_url');
                         if (empty($url) || !str_starts_with($url, 'https://')) {
-                            throw new \Exception("A valid HTTPS URL is required by ABDM Gateway.");
+                            throw new \Exception("A valid HTTPS URL is required by ABDM Gateway (e.g. https://netracare.netrikanetralaya.com).");
                         }
 
                         $res = $bridgeService->updateBridgeUrl($url);
                         Notification::make()
                             ->title('Bridge URL Updated!')
-                            ->body($res['message'] ?? 'Successfully updated.')
+                            ->body($res['message'] ?? 'Successfully updated in ABDM Gateway V3.')
                             ->success()
                             ->send();
                     } catch (\Throwable $e) {
@@ -223,8 +227,11 @@ class AbdmSettings extends Page implements HasForms
                 ->requiresConfirmation()
                 ->modalHeading('Register Facility HIP Service (NHA Step 2)')
                 ->modalDescription('This adds Netrika Netralaya as an active HIP (Health Information Provider) in the ABDM Mock Facility Registry.')
-                ->action(function (AbdmBridgeService $bridgeService) {
+                ->action(function (AbdmBridgeService $bridgeService, AbdmClient $client) {
                     try {
+                        $this->save();
+                        $client->loadConfig();
+
                         $res = $bridgeService->addUpdateServices();
                         Notification::make()
                             ->title('HIP Service Registered!')

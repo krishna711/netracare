@@ -172,7 +172,7 @@ class ScanAndShareService
                 'Authorization' => 'Bearer ' . $token,
                 'Content-Type' => 'application/json',
                 'REQUEST-ID' => (string) Str::uuid(),
-                'TIMESTAMP' => now()->toIso8601String(),
+                'TIMESTAMP' => $this->client->getIsoTimestamp(),
                 'X-CM-ID' => $this->client->getCmId(),
             ])
             ->post($url, $payload);
