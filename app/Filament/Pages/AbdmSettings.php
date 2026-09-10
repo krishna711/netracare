@@ -152,7 +152,16 @@ class AbdmSettings extends Page implements HasForms
         ];
 
         foreach ($mappings as $key => $val) {
-            Setting::updateOrCreate(['key' => $key], ['value' => $val, 'name' => strtoupper(str_replace('_', ' ', $key))]);
+            Setting::updateOrCreate(
+                ['key' => $key],
+                [
+                    'value' => (string) ($val ?? ''),
+                    'name' => strtoupper(str_replace('_', ' ', $key)),
+                    'description' => 'ABDM: ' . str_replace('_', ' ', $key),
+                    'field' => json_encode(['name' => 'value', 'type' => 'text', 'title' => 'Value']),
+                    'active' => 1,
+                ]
+            );
         }
 
         Notification::make()
