@@ -78,77 +78,79 @@ class AbdmBridgeService
 
     /**
      * Step 2: Add or update the services (HIP/HIU) to the bridge and mock facility registry.
-     * Official V3 Endpoint: POST https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices
+     * Endpoint from NHA Instructions: POST https://dev.abdm.gov.in/gateway/v1/bridges/addUpdateServices
      */
     public function addUpdateServices(?array $services = null): array
     {
         $token = $this->client->getSessionToken();
-        $facilityId = $this->client->getHipId() ?: $this->client->getClientId();
+        $hipId = $this->client->getHipId() ?: $this->client->getClientId();
         $facilityName = config('abdm.facility_name', 'Netrika Netralaya');
-        $bridgeId = $this->client->getClientId();
+        $callbackUrl = config('abdm.public_callback_url', url('/'));
 
-        $facilityUrl = "https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices";
-
+        // Standard NHA payload structure (list of bridge services)
         $payload = $services ?: [
-            'facilityId' => $facilityId,
-            'facilityName' => $facilityName,
-            'HRP' => [
-                [
-                    'bridgeId' => $bridgeId,
-                    'hipName' => $facilityName,
-                    'type' => 'HIP',
-                    'active' => true,
+            [
+                'id' => $hipId,
+                'name' => $facilityName,
+                'type' => 'HIP',
+                'active' => true,
+                'alias' => [$facilityName],
+                'endpoints' => [
+                    [
+                        'address' => rtrim($callbackUrl, '/') . '/api/v3/hip/patient/share',
+                        'connectionType' => 'https',
+                        'use' => 'registration',
+                    ],
                 ],
             ],
         ];
 
-        Log::info("ABDM Bridge: Registering HIP service at {$facilityUrl}", ['payload' => $payload]);
+        // Primary: Official endpoint from NHA email
+        $url = "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices";
+        Log::info("ABDM Bridge: Registering HIP service at {$url}", ['payload' => $payload]);
 
         $response = Http::timeout(25)
             ->withHeaders([
                 'Authorization' => 'Bearer ' . $token,
                 'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
+                'Accept' => '*/*',
+                'X-CM-ID' => $this->client->getCmId(),
             ])
-            ->post($facilityUrl, $payload);
+            ->post($url, $payload);
 
         if ($response->successful()) {
             return [
                 'status' => 'success',
-                'message' => 'HIP service registered successfully in ABDM Facility Registry.',
+                'message' => 'HIP service registered successfully in ABDM Bridge.',
                 'data' => $response->json() ?? $response->body(),
             ];
         }
 
-        // Fallback to legacy endpoint if facilitysbx returns 404
-        if ($response->status() === 404) {
-            $legacyUrl = "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices";
-            $legResp = Http::timeout(20)
-                ->withHeaders([
-                    'Authorization' => 'Bearer ' . $token,
-                    'Content-Type' => 'application/json',
-                    'Accept' => '*/*',
-                    'X-CM-ID' => $this->client->getCmId(),
-                ])
-                ->post($legacyUrl, $payload);
+        // Secondary / V3 Fallback: PUT https://dev.abdm.gov.in/api/hiecm/gateway/v3/bridge-service
+        $v3Url = "{$this->client->getGatewayBaseUrl()}/gateway/v3/bridge-service";
+        Log::info("ABDM Bridge: Trying V3 bridge-service registration at {$v3Url}");
 
-            if ($legResp->successful()) {
-                return [
-                    'status' => 'success',
-                    'message' => 'HIP service registered successfully to ABDM Bridge.',
-                    'data' => $legResp->json() ?? $legResp->body(),
-                ];
-            }
+        $v3Resp = Http::timeout(25)
+            ->withHeaders($this->client->getStandardHeaders($token))
+            ->put($v3Url, $payload[0]);
+
+        if ($v3Resp->successful()) {
+            return [
+                'status' => 'success',
+                'message' => 'HIP service registered successfully in ABDM Gateway V3.',
+                'data' => $v3Resp->json() ?? $v3Resp->body(),
+            ];
         }
 
-        $error = $response->body();
+        $error = $response->body() ?: $v3Resp->body();
         Log::error("ABDM Bridge Service registration failed: {$error}");
         throw new Exception("Failed to add/update Bridge Services ({$response->status()}): {$error}");
     }
 
     /**
      * Step 3: View added services from the bridge to verify registration.
-     * Official V3 Endpoint: GET https://dev.abdm.gov.in/api/hiecm/gateway/v3/bridge-services
+     * Endpoint: GET https://dev.abdm.gov.in/api/hiecm/gateway/v3/bridge-services
+     * Fallback: GET https://dev.abdm.gov.in/gateway/v1/bridges/getServices
      */
     public function getServices(): array
     {
@@ -166,24 +168,22 @@ class AbdmBridgeService
             return is_array($data) ? $data : ['response' => $data];
         }
 
-        // Fallback to legacy if 404
-        if ($response->status() === 404) {
-            $v1Url = "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/getServices";
-            $v1Resp = Http::timeout(20)
-                ->withHeaders([
-                    'Authorization' => 'Bearer ' . $token,
-                    'Accept' => 'application/json',
-                    'X-CM-ID' => $this->client->getCmId(),
-                ])
-                ->get($v1Url);
+        // Fallback to legacy endpoint from NHA email
+        $v1Url = "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/getServices";
+        $v1Resp = Http::timeout(20)
+            ->withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'Accept' => 'application/json',
+                'X-CM-ID' => $this->client->getCmId(),
+            ])
+            ->get($v1Url);
 
-            if ($v1Resp->successful()) {
-                $data = $v1Resp->json();
-                return is_array($data) ? $data : ['response' => $data];
-            }
+        if ($v1Resp->successful()) {
+            $data = $v1Resp->json();
+            return is_array($data) ? $data : ['response' => $data];
         }
 
-        $error = $response->body();
+        $error = $response->body() ?: $v1Resp->body();
         Log::error("ABDM Get Services failed: {$error}");
         throw new Exception("Failed to fetch Bridge Services ({$response->status()}): {$error}");
     }
