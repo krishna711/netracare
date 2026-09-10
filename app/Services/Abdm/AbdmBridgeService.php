@@ -144,6 +144,15 @@ class AbdmBridgeService
 
         $error = $response->body() ?: $v3Resp->body();
         Log::error("ABDM Bridge Service registration failed: {$error}");
+
+        if (str_contains($error, '900908') || str_contains($error, 'API Subscription validation failed')) {
+            throw new Exception(
+                "NHA Sandbox V3 Notice (403): V3 Bridge Client IDs are not subscribed to the legacy V1 addUpdateServices API. " .
+                "In ABDM V3, facility HIP linking is completed via the ABDM Sandbox Portal (Mock Facility Registry) or automatically by NHA Integration Support upon replying to your onboarding ticket. " .
+                "Your Bridge URL is already updated and verified! Click '3. View Registered Services' or reply to integration.support@nha.gov.in with your Bridge ID: {$hipId}."
+            );
+        }
+
         throw new Exception("Failed to add/update Bridge Services ({$response->status()}): {$error}");
     }
 
@@ -165,6 +174,7 @@ class AbdmBridgeService
 
         if ($response->successful()) {
             $data = $response->json();
+            Log::info("ABDM Bridge: getServices response", ['data' => $data]);
             return is_array($data) ? $data : ['response' => $data];
         }
 
@@ -180,6 +190,7 @@ class AbdmBridgeService
 
         if ($v1Resp->successful()) {
             $data = $v1Resp->json();
+            Log::info("ABDM Bridge: getServices V1 response", ['data' => $data]);
             return is_array($data) ? $data : ['response' => $data];
         }
 

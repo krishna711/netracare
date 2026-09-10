@@ -59,17 +59,23 @@
         @endif
 
         {{-- Registered Bridge Services List (from Step 3 of NHA email) --}}
-        @if ($bridgeServices)
+        @if ($bridgeServices !== null)
             <div class="p-5 rounded-xl border border-sky-500/30 bg-white dark:bg-gray-900 shadow-sm">
                 <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
                     <div class="flex items-center gap-2">
                         <x-filament::icon icon="heroicon-o-building-office" class="h-5 w-5 text-sky-500" />
                         <h3 class="font-semibold text-gray-900 dark:text-white">Active Bridge Services (Mock Facility Registry)</h3>
                     </div>
-                    <span class="text-xs text-gray-500 dark:text-gray-400">NHA Verification Step 3</span>
+                    <span class="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">Gateway V3 Connected</span>
                 </div>
                 <div class="mt-3 overflow-x-auto">
-                    <pre class="bg-gray-50 dark:bg-gray-950 p-3 rounded-lg text-xs font-mono text-gray-800 dark:text-gray-200 max-h-60 overflow-y-auto">{{ json_encode($bridgeServices, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
+                    @if (empty($bridgeServices) || $bridgeServices === ['response' => []])
+                        <div class="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-300">
+                            <strong>Bridge ID active in ABDM Gateway!</strong> No facility is linked to this bridge yet. You can now reply to <a href="mailto:integration.support@nha.gov.in" class="underline font-bold">integration.support@nha.gov.in</a> to link your facility or close the ticket.
+                        </div>
+                    @else
+                        <pre class="bg-gray-50 dark:bg-gray-950 p-3 rounded-lg text-xs font-mono text-gray-800 dark:text-gray-200 max-h-60 overflow-y-auto">{{ json_encode($bridgeServices, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
+                    @endif
                 </div>
             </div>
         @endif
