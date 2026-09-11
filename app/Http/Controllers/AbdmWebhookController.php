@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Abdm\CareContextService;
+use App\Services\Abdm\FhirBundleService;
 use App\Services\Abdm\ScanAndShareService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,11 +14,16 @@ class AbdmWebhookController extends Controller
 {
     protected ScanAndShareService $scanShareService;
     protected CareContextService $careContextService;
+    protected FhirBundleService $fhirBundleService;
 
-    public function __construct(ScanAndShareService $scanShareService, CareContextService $careContextService)
-    {
+    public function __construct(
+        ScanAndShareService $scanShareService,
+        CareContextService $careContextService,
+        FhirBundleService $fhirBundleService
+    ) {
         $this->scanShareService = $scanShareService;
         $this->careContextService = $careContextService;
+        $this->fhirBundleService = $fhirBundleService;
     }
 
     /**
@@ -112,6 +118,48 @@ class AbdmWebhookController extends Controller
         return response()->json([
             'status' => 'SUCCESS',
             'message' => 'Link Confirm acknowledged.',
+        ], 200);
+    }
+
+    /**
+     * Handle incoming health information request from ABDM Gateway.
+     * Route: POST /api/v3/hip/health-information/request
+     */
+    public function handleHealthInfoRequest(Request $request): JsonResponse
+    {
+        $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
+        $payload = $request->all();
+
+        Log::info("ABDM Webhook: Health Information Request received", [
+            'requestId' => $requestId,
+            'payload' => $payload,
+        ]);
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'message' => 'Health information request received and queued for transfer.',
+            'timestamp' => now()->toISOString(),
+        ], 200);
+    }
+
+    /**
+     * Handle incoming consent notification from ABDM Gateway.
+     * Route: POST /api/v3/hip/consent/notify
+     */
+    public function handleConsentNotify(Request $request): JsonResponse
+    {
+        $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
+        $payload = $request->all();
+
+        Log::info("ABDM Webhook: Consent Notification received", [
+            'requestId' => $requestId,
+            'payload' => $payload,
+        ]);
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'message' => 'Consent notification acknowledged.',
+            'timestamp' => now()->toISOString(),
         ], 200);
     }
 }

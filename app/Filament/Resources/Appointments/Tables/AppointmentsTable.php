@@ -32,6 +32,7 @@ use Filament\Forms\Components\TagsInput;
 use Filament\Notifications\Notification;
 use Illuminate\Support\HtmlString;
 use App\Services\Abdm\CareContextService;
+use App\Services\Abdm\FhirBundleService;
 use Illuminate\Support\Facades\DB;
 
 if (!function_exists('getSettingOptions')) {
@@ -473,6 +474,95 @@ class AppointmentsTable
                                 ->danger()
                                 ->send();
                         }
+                    }),
+
+                Action::make('abdmFhir')
+                    ->label('FHIR R4')
+                    ->icon('heroicon-o-document-chart-bar')
+                    ->color('info')
+                    ->tooltip('View & Export official NRCES FHIR R4 Bundle (Milestone 2)')
+                    ->modalHeading(fn (Appointment $record): string => "NRCES FHIR R4 Health Record — Visit #{$record->id}")
+                    ->modalWidth('5xl')
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->form(function (Appointment $record, FhirBundleService $fhirService): array {
+                        $patient = $record->patient;
+                        $consultation = $record->consultation ?: Consultation::where('appointment_id', $record->id)->first();
+                        
+                        try {
+                            $opBundle = $fhirService->buildOpConsultationBundle($record);
+                            $rxBundle = $fhirService->buildPrescriptionBundle($record);
+                            $opJson = json_encode($opBundle, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                            $rxJson = json_encode($rxBundle, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                        } catch (\Throwable $e) {
+                            $opJson = json_encode(['error' => $e->getMessage()], JSON_PRETTY_PRINT);
+                            $rxJson = $opJson;
+                        }
+
+                        $diagCount = count($fhirService->parseList($consultation?->diagnosis));
+                        $rxCount = count($fhirService->parsePrescriptions($consultation?->prescription));
+                        $downloadOpUrl = url("/abdm/fhir/{$record->id}/opconsult");
+                        $downloadRxUrl = url("/abdm/fhir/{$record->id}/prescription");
+
+                        $summaryHtml = "
+                            <div class='grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-xs'>
+                                <div class='p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg'>
+                                    <div class='font-semibold text-emerald-800 dark:text-emerald-300'>Patient & ABHA</div>
+                                    <div class='text-gray-700 dark:text-gray-200 font-medium mt-1'>{$patient?->name}</div>
+                                    <div class='font-mono text-emerald-700 dark:text-emerald-400 text-xs'>" . ($patient?->formatted_abha_number ?: 'No ABHA') . "</div>
+                                </div>
+                                <div class='p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg'>
+                                    <div class='font-semibold text-blue-800 dark:text-blue-300'>NRCES R4 Standard</div>
+                                    <div class='text-gray-700 dark:text-gray-200 mt-1'>OPConsultRecord & RxRecord</div>
+                                    <div class='font-mono text-blue-700 dark:text-blue-400 text-xs'>Ref: OPD-APP-{$record->id}</div>
+                                </div>
+                                <div class='p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-lg'>
+                                    <div class='font-semibold text-purple-800 dark:text-purple-300'>Clinical Content</div>
+                                    <div class='text-gray-700 dark:text-gray-200 mt-1'>{$diagCount} Diagnosis, {$rxCount} Medicines</div>
+                                    <div class='text-gray-600 dark:text-gray-300 text-xs'>Follow-up: " . ($consultation?->followup_date ?: 'Not set') . "</div>
+                                </div>
+                            </div>
+                            <div class='flex flex-wrap items-center gap-2 mb-4'>
+                                <a href='{$downloadOpUrl}' target='_blank' class='inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold shadow-sm transition'>
+                                    <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4'></path></svg>
+                                    Download OP Consultation JSON
+                                </a>
+                                <a href='{$downloadRxUrl}' target='_blank' class='inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold shadow-sm transition'>
+                                    <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4'></path></svg>
+                                    Download Prescription JSON
+                                </a>
+                                <span class='text-xs text-gray-500 ml-auto'>Conforms to ABDM M2 FHIR Specification</span>
+                            </div>
+                        ";
+
+                        return [
+                            \Filament\Forms\Components\Placeholder::make('summary')
+                                ->hiddenLabel()
+                                ->content(new HtmlString($summaryHtml)),
+                            \Filament\Forms\Components\Tabs::make('fhir_tabs')
+                                ->tabs([
+                                    \Filament\Forms\Components\Tabs\Tab::make('op_consult')
+                                        ->label('OP Consultation Record (JSON)')
+                                        ->schema([
+                                            \Filament\Forms\Components\Textarea::make('op_fhir_json')
+                                                ->hiddenLabel()
+                                                ->rows(18)
+                                                ->default($opJson)
+                                                ->disabled()
+                                                ->extraInputAttributes(['class' => 'font-mono text-xs leading-relaxed']),
+                                        ]),
+                                    \Filament\Forms\Components\Tabs\Tab::make('prescription')
+                                        ->label('Prescription Document (JSON)')
+                                        ->schema([
+                                            \Filament\Forms\Components\Textarea::make('rx_fhir_json')
+                                                ->hiddenLabel()
+                                                ->rows(18)
+                                                ->default($rxJson)
+                                                ->disabled()
+                                                ->extraInputAttributes(['class' => 'font-mono text-xs leading-relaxed']),
+                                        ]),
+                                ]),
+                        ];
                     }),
 
                 Action::make('pay')

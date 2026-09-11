@@ -17,3 +17,5 @@ Route::prefix('print')->group(function () {
     Route::get('/ipd/discharge/{id}/{aid}', [PrintController::class, 'printIpdDischarge']);
     Route::get('/patient/abha-card/{id}', [PrintController::class, 'printAbhaCard']);
 });
+
+Route::get('/abdm/fhir/{id}/{type?}', [\App\Http\Controllers\AbdmFhirController::class, 'export'])->name('abdm.fhir.export');
