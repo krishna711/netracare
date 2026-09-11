@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('abdm_care_contexts', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('patient_id')->constrained('patients')->cascadeOnDelete();
+            $table->unsignedBigInteger('patient_id')->index();
             $table->string('care_context_reference')->unique();
             $table->string('display_name');
             $table->string('hi_type')->default('OPConsultation'); // OPConsultation, Prescription, DiagnosticReport
