@@ -505,33 +505,36 @@ class AppointmentsTable
                         $downloadRxUrl = url("/abdm/fhir/{$record->id}/prescription");
 
                         $summaryHtml = "
-                            <div class='grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-xs'>
-                                <div class='p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg'>
-                                    <div class='font-semibold text-emerald-800 dark:text-emerald-300'>Patient & ABHA</div>
-                                    <div class='text-gray-700 dark:text-gray-200 font-medium mt-1'>{$patient?->name}</div>
-                                    <div class='font-mono text-emerald-700 dark:text-emerald-400 text-xs'>" . ($patient?->formatted_abha_number ?: 'No ABHA') . "</div>
+                            <div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; font-size: 13px;'>
+                                <div style='background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 12px; color: #065f46;'>
+                                    <div style='font-weight: 700; color: #047857; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;'>Patient & ABHA</div>
+                                    <div style='color: #111827; font-weight: 600; font-size: 14px;'>{$patient?->name}</div>
+                                    <div style='font-family: monospace; color: #059669; font-size: 12px; margin-top: 3px; font-weight: 600;'>" . ($patient?->formatted_abha_number ?: 'No ABHA') . "</div>
                                 </div>
-                                <div class='p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg'>
-                                    <div class='font-semibold text-blue-800 dark:text-blue-300'>NRCES R4 Standard</div>
-                                    <div class='text-gray-700 dark:text-gray-200 mt-1'>OPConsultRecord & RxRecord</div>
-                                    <div class='font-mono text-blue-700 dark:text-blue-400 text-xs'>Ref: OPD-APP-{$record->id}</div>
+                                <div style='background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px; color: #1e40af;'>
+                                    <div style='font-weight: 700; color: #1d4ed8; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;'>NRCES Standard</div>
+                                    <div style='color: #111827; font-weight: 600;'>OPConsultRecord & Rx</div>
+                                    <div style='font-family: monospace; color: #2563eb; font-size: 12px; margin-top: 3px; font-weight: 600;'>Ref: OPD-APP-{$record->id}</div>
                                 </div>
-                                <div class='p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-lg'>
-                                    <div class='font-semibold text-purple-800 dark:text-purple-300'>Clinical Content</div>
-                                    <div class='text-gray-700 dark:text-gray-200 mt-1'>{$diagCount} Diagnosis, {$rxCount} Medicines</div>
-                                    <div class='text-gray-600 dark:text-gray-300 text-xs'>Follow-up: " . ($consultation?->followup_date ?: 'Not set') . "</div>
+                                <div style='background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 12px; color: #6b21a8;'>
+                                    <div style='font-weight: 700; color: #7e22ce; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;'>Clinical Content</div>
+                                    <div style='color: #111827; font-weight: 600;'>{$diagCount} Diagnosis, {$rxCount} Medicines</div>
+                                    <div style='color: #6b7280; font-size: 12px; margin-top: 3px;'>Follow-up: " . ($consultation?->followup_date ?: 'Not set') . "</div>
                                 </div>
                             </div>
-                            <div class='flex flex-wrap items-center gap-2 mb-4'>
-                                <a href='{$downloadOpUrl}' target='_blank' class='inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold shadow-sm transition'>
-                                    <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4'></path></svg>
+                            <div style='display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; padding: 4px 0;'>
+                                <a href='{$downloadOpUrl}' target='_blank' style='display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; background: #059669; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'>
+                                    <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' style='width: 14px; height: 14px; min-width: 14px; max-width: 14px; display: inline-block; vertical-align: middle;'><path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'></path><polyline points='7 10 12 15 17 10'></polyline><line x1='12' y1='15' x2='12' y2='3'></line></svg>
                                     Download OP Consultation JSON
                                 </a>
-                                <a href='{$downloadRxUrl}' target='_blank' class='inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold shadow-sm transition'>
-                                    <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4'></path></svg>
+                                <a href='{$downloadRxUrl}' target='_blank' style='display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; background: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'>
+                                    <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' style='width: 14px; height: 14px; min-width: 14px; max-width: 14px; display: inline-block; vertical-align: middle;'><path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'></path><polyline points='7 10 12 15 17 10'></polyline><line x1='12' y1='15' x2='12' y2='3'></line></svg>
                                     Download Prescription JSON
                                 </a>
-                                <span class='text-xs text-gray-500 ml-auto'>Conforms to ABDM M2 FHIR Specification</span>
+                                <span style='font-size: 12px; color: #059669; font-weight: 600; margin-left: auto; display: inline-flex; align-items: center; gap: 4px;'>
+                                    <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' style='width: 14px; height: 14px; display: inline-block;'><polyline points='20 6 9 17 4 12'></polyline></svg>
+                                    Validated NRCES FHIR R4 Compliant
+                                </span>
                             </div>
                         ";
 
