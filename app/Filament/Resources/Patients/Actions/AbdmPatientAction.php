@@ -6,7 +6,6 @@ use App\Models\Patient;
 use App\Services\Abdm\AbhaEnrollmentService;
 use App\Services\Abdm\AbhaVerifyService;
 use Filament\Actions\Action;
-use Filament\Forms\Components\Actions\Action as FormAction;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Forms\Components\Placeholder;
@@ -38,35 +37,21 @@ class AbdmPatientAction
                                         <div class='p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 flex items-center justify-between'>
                                             <div class='flex items-center gap-4'>
                                                 <div class='w-12 h-12 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold text-xl'>
-                                                    🆔
+                                                    ✓
                                                 </div>
                                                 <div>
-                                                    <div class='text-xs font-semibold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider'>ABHA Number</div>
-                                                    <div class='text-xl font-mono font-extrabold text-emerald-900 dark:text-emerald-200'>{$record->formatted_abha_number}</div>
-                                                    <div class='text-xs text-gray-600 dark:text-gray-400 font-medium mt-0.5'>Address: <span class='text-emerald-700 dark:text-emerald-300 font-bold'>{$record->abha_address}</span></div>
+                                                    <h4 class='font-bold text-emerald-950 dark:text-emerald-200 text-base'>ABHA Linked & Active</h4>
+                                                    <p class='text-sm text-emerald-800 dark:text-emerald-400 font-mono'>Number: {$record->formatted_abha_number}</p>
+                                                    <p class='text-xs text-emerald-700 dark:text-emerald-400'>Address: {$record->abha_address}</p>
                                                 </div>
                                             </div>
-                                            <div class='text-right'>
-                                                <span class='inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100'>
-                                                    ✓ Verified
-                                                </span>
-                                                <div class='mt-2'>
-                                                    <a href='/print/patient/abha-card/{$record->id}' target='_blank' class='inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition'>
-                                                        🖨️ Print ABHA Card
-                                                    </a>
-                                                </div>
+                                            <div>
+                                                <a href='/print/patient/abha-card/{$record->id}' target='_blank' class='inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow transition'>
+                                                    Print Official Card
+                                                </a>
                                             </div>
                                         </div>
                                     ")),
-
-                                Grid::make(2)->schema([
-                                    Placeholder::make('verified_at')
-                                        ->label('Verified On')
-                                        ->content($record->abdm_verified_at ? $record->abdm_verified_at->format('d M Y, h:i A') : 'Recorded'),
-                                    Placeholder::make('mobile_linked')
-                                        ->label('Registered Mobile')
-                                        ->content($record->mobile),
-                                ]),
                             ]),
                     ];
                 }
@@ -92,7 +77,7 @@ class AbdmPatientAction
                                     ->placeholder('12-digit Aadhaar')
                                     ->maxLength(12)
                                     ->suffixAction(
-                                        FormAction::make('sendAadhaarOtp')
+                                        Action::make('sendAadhaarOtp')
                                             ->label('Send OTP')
                                             ->icon('heroicon-o-paper-airplane')
                                             ->action(function ($set, $get, AbhaEnrollmentService $enrolService) {
@@ -153,7 +138,7 @@ class AbdmPatientAction
                                     ->default($record->mobile)
                                     ->required()
                                     ->suffixAction(
-                                        FormAction::make('sendVerifyOtp')
+                                        Action::make('sendVerifyOtp')
                                             ->label('Send OTP')
                                             ->icon('heroicon-o-paper-airplane')
                                             ->action(function ($set, $get, AbhaVerifyService $verifyService) {
