@@ -49,4 +49,9 @@ class Patient extends Model
     {
         return $this->hasMany(Appointment::class);
     }
+
+    public function careContexts()
+    {
+        return $this->hasMany(AbdmCareContext::class);
+    }
 }

@@ -29,6 +29,9 @@ use Filament\Schemas\Components\Section;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\TagsInput;
+use Filament\Notifications\Notification;
+use Illuminate\Support\HtmlString;
+use App\Services\Abdm\CareContextService;
 use Illuminate\Support\Facades\DB;
 
 if (!function_exists('getSettingOptions')) {
@@ -376,6 +379,92 @@ class AppointmentsTable
                         $selectedOptions = implode(':', $data['print_options'] ?? []) . ':';
                         $url = url("/print/patient/details/{$record->patient_id}/{$record->id}?option={$selectedOptions}");
                         $livewire->js("window.open('{$url}', '_blank');");
+                    }),
+
+                Action::make('abdmLink')
+                    ->label(function (Appointment $record): string {
+                        $cc = $record->careContext;
+                        return ($cc && $cc->isLinked()) ? 'ABHA ✓' : 'ABHA Link';
+                    })
+                    ->icon('heroicon-o-link')
+                    ->color(function (Appointment $record): string {
+                        $cc = $record->careContext;
+                        return ($cc && $cc->isLinked()) ? 'success' : ($record->patient?->isAbhaVerified() ? 'info' : 'gray');
+                    })
+                    ->tooltip(function (Appointment $record): string {
+                        $cc = $record->careContext;
+                        if ($cc && $cc->isLinked()) {
+                            return "Linked to ABHA on " . ($cc->linked_at?->format('d-M-Y H:i') ?? '');
+                        }
+                        return $record->patient?->isAbhaVerified() ? "Click to link visit to patient's ABHA account" : "Patient has no verified ABHA. Click to link or verify.";
+                    })
+                    ->modalHeading(fn (Appointment $record): string => "ABDM Care Context Linking - Visit #{$record->id}")
+                    ->modalWidth('lg')
+                    ->modalSubmitActionLabel(function (Appointment $record): string {
+                        $cc = $record->careContext;
+                        return ($cc && $cc->isLinked()) ? 'Re-link / Update' : 'Link Visit to ABHA';
+                    })
+                    ->form(function (Appointment $record): array {
+                        $patient = $record->patient;
+                        $cc = $record->careContext;
+                        $isLinked = $cc && $cc->isLinked();
+
+                        $abhaStatusHtml = $patient?->isAbhaVerified()
+                            ? "<span class='px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800 font-semibold'>Verified</span> {$patient->formatted_abha_number} ({$patient->abha_address})"
+                            : "<span class='px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-800 font-semibold'>Not Verified</span>";
+
+                        $linkStatusHtml = $isLinked
+                            ? "<div class='p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 font-medium'>✓ This visit is already linked to patient's ABHA account (Ref: <code>{$cc->care_context_reference}</code>) on {$cc->linked_at?->format('d M Y, h:i A')}.</div>"
+                            : "<div class='p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800'>Linking this visit will push the Care Context to the ABDM Gateway and notify the patient on their ABHA App.</div>";
+
+                        return [
+                            \Filament\Forms\Components\Placeholder::make('patient_info')
+                                ->label('Patient Details')
+                                ->content(new HtmlString("
+                                    <div class='text-sm space-y-1'>
+                                        <div><strong>Name:</strong> {$patient?->name} (UHID: {$patient?->id})</div>
+                                        <div><strong>ABHA Status:</strong> {$abhaStatusHtml}</div>
+                                    </div>
+                                ")),
+                            \Filament\Forms\Components\Placeholder::make('context_preview')
+                                ->label('Care Context Details')
+                                ->content(new HtmlString("
+                                    <div class='text-sm space-y-1 mb-2'>
+                                        <div><strong>Visit Ref:</strong> <code>OPD-APP-{$record->id}</code></div>
+                                        <div><strong>Encounter Date:</strong> " . ($record->appointment_time ? date('d-M-Y H:i A', strtotime($record->appointment_time)) : date('d-M-Y')) . "</div>
+                                        <div><strong>Doctor:</strong> " . ($record->doctor?->name ?? 'Attending Specialist') . "</div>
+                                    </div>
+                                    {$linkStatusHtml}
+                                ")),
+                        ];
+                    })
+                    ->action(function (Appointment $record, CareContextService $contextService) {
+                        $patient = $record->patient;
+                        if (!$patient || !$patient->isAbhaVerified()) {
+                            Notification::make()
+                                ->title('ABHA Not Verified')
+                                ->body('Please verify the patient\'s ABHA number first before linking clinical visits.')
+                                ->warning()
+                                ->send();
+                            return;
+                        }
+
+                        try {
+                            $context = $contextService->createOrGetForAppointment($record);
+                            $res = $contextService->linkCareContext($context);
+
+                            Notification::make()
+                                ->title('Visit Linked to ABHA Successfully!')
+                                ->body("Care Context {$res['care_context_reference']} registered with ABDM.")
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $e) {
+                            Notification::make()
+                                ->title('Care Context Linking Failed')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
                     }),
 
                 Action::make('pay')

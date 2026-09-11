@@ -28,6 +28,33 @@ class AbdmPatientAction
             ->modalSubmitActionLabel(fn (Patient $record): string => $record->isAbhaVerified() ? 'Close' : 'Complete & Save')
             ->form(function (Patient $record): array {
                 if ($record->isAbhaVerified()) {
+                    $contexts = $record->careContexts()->latest()->get();
+                    $contextsHtml = '';
+                    if ($contexts->isEmpty()) {
+                        $contextsHtml = "<div class='text-xs text-gray-500 italic p-3 bg-gray-50 rounded-lg'>No clinical care contexts linked yet. You can link patient visits directly from the <strong>Appointments</strong> table using the <strong>ABHA Link</strong> action.</div>";
+                    } else {
+                        $contextsHtml = "<div class='divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden text-xs'>";
+                        foreach ($contexts as $cc) {
+                            $badge = $cc->isLinked()
+                                ? "<span class='px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold'>Linked</span>"
+                                : "<span class='px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold'>Pending</span>";
+                            $timeStr = $cc->linked_at ? $cc->linked_at->format('d-M-Y H:i') : 'Not yet linked';
+                            $contextsHtml .= "
+                                <div class='p-2.5 flex items-center justify-between bg-white'>
+                                    <div>
+                                        <div class='font-mono font-medium text-gray-900'>{$cc->care_context_reference}</div>
+                                        <div class='text-gray-500'>{$cc->display_name}</div>
+                                    </div>
+                                    <div class='text-right'>
+                                        <div>{$badge}</div>
+                                        <div class='text-[10px] text-gray-400 mt-0.5'>{$timeStr}</div>
+                                    </div>
+                                </div>
+                            ";
+                        }
+                        $contextsHtml .= "</div>";
+                    }
+
                     return [
                         Section::make('Verified ABHA Identity')
                             ->schema([
@@ -52,6 +79,12 @@ class AbdmPatientAction
                                             </div>
                                         </div>
                                     ")),
+                            ]),
+                        Section::make('Linked Health Records (M2 Care Contexts)')
+                            ->schema([
+                                Placeholder::make('care_contexts_list')
+                                    ->label('')
+                                    ->content(new HtmlString($contextsHtml)),
                             ]),
                     ];
                 }

@@ -22,4 +22,9 @@ class Appointment extends Model
     {
         return $this->hasOne(Consultation::class);
     }
+
+    public function careContext()
+    {
+        return $this->hasOne(AbdmCareContext::class);
+    }
 }

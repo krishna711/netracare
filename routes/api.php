@@ -12,4 +12,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v3/hip')->group(function () {
     Route::post('/patient/share', [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::post('/patient/care-context/discover', [AbdmWebhookController::class, 'handleCareContextDiscover']);
+    Route::post('/link/care-context/init', [AbdmWebhookController::class, 'handleLinkInit']);
+    Route::post('/link/care-context/confirm', [AbdmWebhookController::class, 'handleLinkConfirm']);
 });
