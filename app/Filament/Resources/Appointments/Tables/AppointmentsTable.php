@@ -539,22 +539,22 @@ class AppointmentsTable
                             \Filament\Forms\Components\Placeholder::make('summary')
                                 ->hiddenLabel()
                                 ->content(new HtmlString($summaryHtml)),
-                            \Filament\Forms\Components\Tabs::make('fhir_tabs')
+                            Tabs::make('fhir_tabs')
                                 ->tabs([
-                                    \Filament\Forms\Components\Tabs\Tab::make('op_consult')
+                                    Tabs\Tab::make('op_consult')
                                         ->label('OP Consultation Record (JSON)')
                                         ->schema([
-                                            \Filament\Forms\Components\Textarea::make('op_fhir_json')
+                                            Textarea::make('op_fhir_json')
                                                 ->hiddenLabel()
                                                 ->rows(18)
                                                 ->default($opJson)
                                                 ->disabled()
                                                 ->extraInputAttributes(['class' => 'font-mono text-xs leading-relaxed']),
                                         ]),
-                                    \Filament\Forms\Components\Tabs\Tab::make('prescription')
+                                    Tabs\Tab::make('prescription')
                                         ->label('Prescription Document (JSON)')
                                         ->schema([
-                                            \Filament\Forms\Components\Textarea::make('rx_fhir_json')
+                                            Textarea::make('rx_fhir_json')
                                                 ->hiddenLabel()
                                                 ->rows(18)
                                                 ->default($rxJson)
