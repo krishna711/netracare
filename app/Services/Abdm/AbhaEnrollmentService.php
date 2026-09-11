@@ -116,23 +116,58 @@ class AbhaEnrollmentService
         }
 
         $data = $response->json();
+        Log::info("ABDM ABHA Enrol verify response: ", ['data' => $data]);
+
+        // Profile can be inside ABHAProfile, profile, or directly in root
+        $profile = $data['ABHAProfile'] ?? $data['profile'] ?? $data;
 
         // Extract tokens (ABDM v3 returns jwtToken or tokens array)
         $tokens = $data['tokens'] ?? [];
         $jwtToken = $tokens['token'] ?? $data['jwtToken'] ?? $data['token'] ?? null;
         $xToken = $tokens['token'] ?? $jwtToken;
 
+        // Decode JWT token payload if available to extract sub / abhaNumber
+        $jwtPayload = [];
+        if (!empty($jwtToken) && substr_count($jwtToken, '.') >= 2) {
+            $parts = explode('.', $jwtToken);
+            $decoded = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
+            if (is_array($decoded)) {
+                $jwtPayload = $decoded;
+            }
+        }
+
+        // Extract ABHA number
+        $abhaNumber = $profile['ABHANumber'] 
+            ?? $profile['abhaNumber'] 
+            ?? $jwtPayload['abhaNumber']
+            ?? $jwtPayload['sub']
+            ?? $data['ABHANumber'] 
+            ?? $data['abhaNumber'] 
+            ?? null;
+
+        // Extract ABHA address
+        $abhaAddress = $profile['preferredAbhaAddress'] 
+            ?? (is_array($profile['phrAddress'] ?? null) ? ($profile['phrAddress'][0] ?? null) : ($profile['phrAddress'] ?? null))
+            ?? $profile['abhaAddress'] 
+            ?? $jwtPayload['preferredAbhaAddress']
+            ?? $data['preferredAbhaAddress'] 
+            ?? ($abhaNumber ? str_replace('-', '', $abhaNumber) . '@abdm' : null);
+
+        $firstName = $profile['firstName'] ?? $data['firstName'] ?? '';
+        $lastName = $profile['lastName'] ?? $data['lastName'] ?? '';
+        $name = $profile['name'] ?? $data['name'] ?? trim("{$firstName} {$lastName}");
+
         return [
             'status' => 'success',
             'txnId' => $data['txnId'] ?? $txnId,
-            'abhaNumber' => $data['ABHANumber'] ?? $data['abhaNumber'] ?? null,
-            'abhaAddress' => $data['preferredAbhaAddress'] ?? $data['abhaAddress'] ?? null,
-            'name' => $data['name'] ?? trim(($data['firstName'] ?? '') . ' ' . ($data['lastName'] ?? '')),
-            'gender' => $data['gender'] ?? null,
-            'dob' => $data['dob'] ?? trim(($data['yearOfBirth'] ?? '') . '-' . ($data['monthOfBirth'] ?? '') . '-' . ($data['dayOfBirth'] ?? ''), '-'),
-            'mobile' => $data['mobile'] ?? $cleanMobile,
-            'address' => $data['address'] ?? null,
-            'photo' => $data['profilePhoto'] ?? $data['photo'] ?? null,
+            'abhaNumber' => $abhaNumber,
+            'abhaAddress' => $abhaAddress,
+            'name' => $name ?: 'ABHA User',
+            'gender' => $profile['gender'] ?? $data['gender'] ?? null,
+            'dob' => $profile['dob'] ?? $data['dob'] ?? trim(($profile['yearOfBirth'] ?? '') . '-' . ($profile['monthOfBirth'] ?? '') . '-' . ($profile['dayOfBirth'] ?? ''), '-'),
+            'mobile' => $profile['mobile'] ?? $data['mobile'] ?? $cleanMobile,
+            'address' => $profile['address'] ?? $data['address'] ?? null,
+            'photo' => $profile['profilePhoto'] ?? $profile['photo'] ?? $data['profilePhoto'] ?? $data['photo'] ?? null,
             'xToken' => $xToken,
             'raw' => $data,
         ];

@@ -149,12 +149,20 @@ class AbdmPatientAction
                                                 }
 
                                                 try {
-                                                    $clean = preg_replace('/[^0-9]/', '', $id);
-                                                    $hint = strlen($clean) === 14 ? 'abha-number' : 'mobile';
-                                                    $res = $verifyService->requestLoginOtp($hint, $clean, 'abdm');
+                                                    $rawId = trim($id);
+                                                    if (str_contains($rawId, '@')) {
+                                                        $hint = 'abha-address';
+                                                        $loginId = $rawId;
+                                                    } else {
+                                                        $clean = preg_replace('/[^0-9]/', '', $rawId);
+                                                        $hint = strlen($clean) === 14 ? 'abha-number' : 'mobile';
+                                                        $loginId = $clean;
+                                                    }
+                                                    $res = $verifyService->requestLoginOtp($hint, $loginId, 'abdm');
                                                     $set('verify_txn_id', $res['txnId']);
                                                     Notification::make()
                                                         ->title('Verification OTP Sent!')
+                                                        ->body("OTP sent to mobile registered with this {$hint}.")
                                                         ->success()
                                                         ->send();
                                                 } catch (\Throwable $e) {
@@ -218,10 +226,14 @@ class AbdmPatientAction
                             'abdm_profile' => $profile['raw'] ?? $profile,
                             'abdm_verified_at' => now(),
                         ]);
+                        $record->refresh();
+
+                        $num = $record->formatted_abha_number ?: ($profile['abhaNumber'] ?? 'N/A');
+                        $addr = $record->abha_address ?: ($profile['abhaAddress'] ?? '');
 
                         Notification::make()
                             ->title('ABHA Created & Linked Successfully!')
-                            ->body("ABHA Number: {$record->formatted_abha_number} ({$record->abha_address})")
+                            ->body("ABHA Number: {$num}" . ($addr ? " ({$addr})" : ""))
                             ->success()
                             ->send();
                     } catch (\Throwable $e) {
@@ -250,10 +262,14 @@ class AbdmPatientAction
                             'abdm_profile' => $res['profile'] ?? $res['raw'],
                             'abdm_verified_at' => now(),
                         ]);
+                        $record->refresh();
+
+                        $num = $record->formatted_abha_number ?: ($res['abhaNumber'] ?? 'N/A');
+                        $addr = $record->abha_address ?: ($res['abhaAddress'] ?? '');
 
                         Notification::make()
                             ->title('ABHA Verified & Linked to Patient!')
-                            ->body("ABHA: {$record->formatted_abha_number}")
+                            ->body("ABHA Number: {$num}" . ($addr ? " ({$addr})" : ""))
                             ->success()
                             ->send();
                     } catch (\Throwable $e) {

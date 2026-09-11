@@ -96,13 +96,16 @@ class AbhaVerifyService
      * @return array Profile details and xToken
      * @throws Exception
      */
-    public function verifyLoginOtp(string $txnId, string $otp): array
+    public function verifyLoginOtp(string $txnId, string $otp, string $authType = 'mobile'): array
     {
         $cleanOtp = trim($otp);
         $encryptedOtp = $this->crypto->encrypt($cleanOtp);
         $url = "{$this->client->getAbhaBaseUrl()}/v3/profile/login/verify";
 
+        $verifyScope = $authType === 'aadhaar' ? 'aadhaar-verify' : 'mobile-verify';
+
         $payload = [
+            'scope' => ['abha-login', $verifyScope],
             'authData' => [
                 'authMethods' => ['otp'],
                 'otp' => [
@@ -110,22 +113,45 @@ class AbhaVerifyService
                     'otpValue' => $encryptedOtp,
                 ],
             ],
-            'scope' => ['abha-login'],
         ];
 
-        Log::info("ABDM ABHA Verify: Verifying login OTP for txnId {$txnId}");
+        Log::info("ABDM ABHA Verify: Verifying login OTP for txnId {$txnId} with scope {$verifyScope}");
 
         $response = $this->client->sendRequest('POST', $url, $payload);
 
+        // If scope mismatch, automatically retry with alternate verification scope
+        if (!$response->successful() && str_contains($response->body(), 'Invalid Scope')) {
+            $altScope = $verifyScope === 'mobile-verify' ? 'aadhaar-verify' : 'mobile-verify';
+            $payload['scope'] = ['abha-login', $altScope];
+            Log::info("ABDM ABHA Verify: Retrying with alternate scope {$altScope}");
+            $response = $this->client->sendRequest('POST', $url, $payload);
+        }
+
         if (!$response->successful()) {
-            $err = $response->json('message') ?? $response->body();
+            $err = $response->json('message') 
+                ?? $response->json('error.message') 
+                ?? $response->json('details.0.message') 
+                ?? $response->body();
             throw new Exception("OTP Verification Failed ({$response->status()}): {$err}");
         }
 
         $data = $response->json();
+        Log::info("ABDM ABHA Verify response: ", ['data' => $data]);
+
         $token = $data['token'] ?? $data['jwtToken'] ?? ($data['tokens']['token'] ?? null);
 
-        // Fetch full profile if token available
+        // Decode JWT token payload if available to extract sub / abhaNumber
+        $jwtPayload = [];
+        if (!empty($token) && substr_count($token, '.') >= 2) {
+            $parts = explode('.', $token);
+            $decoded = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
+            if (is_array($decoded)) {
+                $jwtPayload = $decoded;
+            }
+        }
+
+        // Account list or profile
+        $account = $data['accounts'][0] ?? [];
         $profile = [];
         if (!empty($token)) {
             try {
@@ -135,14 +161,29 @@ class AbhaVerifyService
             }
         }
 
+        $effective = array_merge($jwtPayload, $data, $account, $profile);
+        $abhaNumber = $effective['ABHANumber'] 
+            ?? $effective['abhaNumber'] 
+            ?? $effective['sub'] 
+            ?? null;
+
+        $abhaAddress = $effective['preferredAbhaAddress'] 
+            ?? (is_array($effective['phrAddress'] ?? null) ? $effective['phrAddress'][0] : ($effective['phrAddress'] ?? null))
+            ?? $effective['abhaAddress'] 
+            ?? ($abhaNumber ? str_replace('-', '', $abhaNumber) . '@abdm' : null);
+
+        $firstName = $effective['firstName'] ?? '';
+        $lastName = $effective['lastName'] ?? '';
+        $name = $effective['name'] ?? trim("{$firstName} {$lastName}");
+
         return [
             'status' => 'success',
             'xToken' => $token,
-            'profile' => $profile ?: $data,
-            'abhaNumber' => $profile['ABHANumber'] ?? $profile['abhaNumber'] ?? ($data['ABHANumber'] ?? null),
-            'abhaAddress' => $profile['preferredAbhaAddress'] ?? $profile['abhaAddress'] ?? ($data['preferredAbhaAddress'] ?? null),
-            'name' => $profile['name'] ?? ($data['name'] ?? null),
-            'mobile' => $profile['mobile'] ?? ($data['mobile'] ?? null),
+            'profile' => $effective,
+            'abhaNumber' => $abhaNumber,
+            'abhaAddress' => $abhaAddress,
+            'name' => $name ?: 'ABHA User',
+            'mobile' => $effective['mobile'] ?? null,
             'raw' => $data,
         ];
     }
