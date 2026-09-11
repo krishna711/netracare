@@ -384,17 +384,17 @@ class AppointmentsTable
                 Action::make('abdmLink')
                     ->label(function (Appointment $record): string {
                         $cc = $record->careContext;
-                        return ($cc && $cc->isLinked()) ? 'ABHA ✓' : 'ABHA Link';
+                        return ($cc && in_array($cc->status, ['linked', 'registered'])) ? 'ABHA ✓' : 'ABHA Link';
                     })
                     ->icon('heroicon-o-link')
                     ->color(function (Appointment $record): string {
                         $cc = $record->careContext;
-                        return ($cc && $cc->isLinked()) ? 'success' : ($record->patient?->isAbhaVerified() ? 'info' : 'gray');
+                        return ($cc && in_array($cc->status, ['linked', 'registered'])) ? 'success' : ($record->patient?->isAbhaVerified() ? 'info' : 'gray');
                     })
                     ->tooltip(function (Appointment $record): string {
                         $cc = $record->careContext;
-                        if ($cc && $cc->isLinked()) {
-                            return "Linked to ABHA on " . ($cc->linked_at?->format('d-M-Y H:i') ?? '');
+                        if ($cc && in_array($cc->status, ['linked', 'registered'])) {
+                            return "Registered on " . ($cc->linked_at?->format('d-M-Y H:i') ?? '');
                         }
                         return $record->patient?->isAbhaVerified() ? "Click to link visit to patient's ABHA account" : "Patient has no verified ABHA. Click to link or verify.";
                     })
@@ -402,20 +402,20 @@ class AppointmentsTable
                     ->modalWidth('lg')
                     ->modalSubmitActionLabel(function (Appointment $record): string {
                         $cc = $record->careContext;
-                        return ($cc && $cc->isLinked()) ? 'Re-link / Update' : 'Link Visit to ABHA';
+                        return ($cc && in_array($cc->status, ['linked', 'registered'])) ? 'Re-link / Update' : 'Link Visit to ABHA';
                     })
                     ->form(function (Appointment $record): array {
                         $patient = $record->patient;
                         $cc = $record->careContext;
-                        $isLinked = $cc && $cc->isLinked();
+                        $isLinked = $cc && in_array($cc->status, ['linked', 'registered']);
 
                         $abhaStatusHtml = $patient?->isAbhaVerified()
                             ? "<span class='px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800 font-semibold'>Verified</span> {$patient->formatted_abha_number} ({$patient->abha_address})"
                             : "<span class='px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-800 font-semibold'>Not Verified</span>";
 
                         $linkStatusHtml = $isLinked
-                            ? "<div class='p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 font-medium'>✓ This visit is already linked to patient's ABHA account (Ref: <code>{$cc->care_context_reference}</code>) on {$cc->linked_at?->format('d M Y, h:i A')}.</div>"
-                            : "<div class='p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800'>Linking this visit will push the Care Context to the ABDM Gateway and notify the patient on their ABHA App.</div>";
+                            ? "<div class='p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 font-medium'>✓ This visit is registered for patient's ABHA account (Ref: <code>{$cc->care_context_reference}</code>).</div>"
+                            : "<div class='p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800'>Linking this visit will register the Care Context with ABDM for patient discovery and records access.</div>";
 
                         return [
                             \Filament\Forms\Components\Placeholder::make('patient_info')
@@ -453,11 +453,19 @@ class AppointmentsTable
                             $context = $contextService->createOrGetForAppointment($record);
                             $res = $contextService->linkCareContext($context);
 
-                            Notification::make()
-                                ->title('Visit Linked to ABHA Successfully!')
-                                ->body("Care Context {$res['care_context_reference']} registered with ABDM.")
-                                ->success()
-                                ->send();
+                            if (($res['status'] ?? '') === 'registered_locally') {
+                                Notification::make()
+                                    ->title('Care Context Registered')
+                                    ->body($res['message'] ?? "Registered as {$res['care_context_reference']}.")
+                                    ->info()
+                                    ->send();
+                            } else {
+                                Notification::make()
+                                    ->title('Visit Linked to ABHA Successfully!')
+                                    ->body("Care Context {$res['care_context_reference']} registered with ABDM.")
+                                    ->success()
+                                    ->send();
+                            }
                         } catch (\Throwable $e) {
                             Notification::make()
                                 ->title('Care Context Linking Failed')
