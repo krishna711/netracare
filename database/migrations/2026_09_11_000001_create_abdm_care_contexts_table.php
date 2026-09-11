@@ -11,6 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::dropIfExists('abdm_care_contexts');
+
         Schema::create('abdm_care_contexts', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('patient_id')->index();
