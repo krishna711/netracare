@@ -76,18 +76,16 @@ class AbdmWebhookController extends Controller
         try {
             $result = $this->careContextService->handleDiscover($payload, $requestId);
 
-            return response()->json([
-                'status' => 'SUCCESS',
-                'message' => 'Discovery processed and acknowledged.',
-                'data' => $result,
-            ], 200);
+            return response()->json($result, 200);
         } catch (\Throwable $e) {
             Log::error("ABDM Discovery Webhook Error: " . $e->getMessage());
 
             return response()->json([
-                'status' => 'ERROR',
-                'message' => $e->getMessage(),
-            ], 500);
+                'error' => [
+                    'code' => 2500,
+                    'message' => $e->getMessage(),
+                ],
+            ], 200);
         }
     }
 
@@ -100,10 +98,13 @@ class AbdmWebhookController extends Controller
         $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
         Log::info("ABDM Webhook: Link Init received", ['requestId' => $requestId, 'payload' => $request->all()]);
 
-        return response()->json([
-            'status' => 'SUCCESS',
-            'message' => 'Link Init acknowledged.',
-        ], 200);
+        try {
+            $result = $this->careContextService->handleLinkInit($request->all(), $requestId);
+            return response()->json($result, 200);
+        } catch (\Throwable $e) {
+            Log::error("ABDM Link Init Error: " . $e->getMessage());
+            return response()->json(['error' => ['code' => 2500, 'message' => $e->getMessage()]], 200);
+        }
     }
 
     /**
@@ -115,10 +116,13 @@ class AbdmWebhookController extends Controller
         $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
         Log::info("ABDM Webhook: Link Confirm received", ['requestId' => $requestId, 'payload' => $request->all()]);
 
-        return response()->json([
-            'status' => 'SUCCESS',
-            'message' => 'Link Confirm acknowledged.',
-        ], 200);
+        try {
+            $result = $this->careContextService->handleLinkConfirm($request->all(), $requestId);
+            return response()->json($result, 200);
+        } catch (\Throwable $e) {
+            Log::error("ABDM Link Confirm Error: " . $e->getMessage());
+            return response()->json(['error' => ['code' => 2500, 'message' => $e->getMessage()]], 200);
+        }
     }
 
     /**

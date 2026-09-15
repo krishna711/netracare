@@ -408,7 +408,7 @@ class CareContextService
         // 3. Send on-discover callback to ABDM Gateway
         $responsePayload = [
             'requestId' => (string) Str::uuid(),
-            'timestamp' => now()->toISOString(),
+            'timestamp' => $this->client->getIsoTimestamp(),
             'transactionId' => $txId,
             'patient' => [
                 'referenceNumber' => "P-{$patient->id}",
@@ -416,49 +416,145 @@ class CareContextService
                 'careContexts' => $careContexts,
                 'matchedBy' => $mobile ? ['MOBILE'] : ['MR'],
             ],
-            'resp' => [
-                'requestId' => $requestId,
-            ],
         ];
 
-        $this->dispatchOnDiscover($responsePayload);
+        $this->dispatchOnDiscover($responsePayload, $requestId);
 
         return [
-            'status' => 'SUCCESS',
-            'patientReference' => "P-{$patient->id}",
-            'contextsCount' => count($careContexts),
+            'transactionId' => $txId,
+            'patient' => [
+                'referenceNumber' => "P-{$patient->id}",
+                'display' => $patient->name,
+                'careContexts' => $careContexts,
+                'matchedBy' => $mobile ? ['MOBILE'] : ['MR'],
+            ],
         ];
     }
 
     /**
      * Dispatch on-discover response to ABDM Gateway (supports V3 and v0.5).
      */
-    protected function dispatchOnDiscover(array $payload): void
+    protected function dispatchOnDiscover(array $payload, string $requestId): void
     {
         $v3Url = "{$this->client->getGatewayBaseUrl()}/user-initiated-linking/v3/patient/care-context/on-discover";
         $v05Url = "https://dev.abdm.gov.in/gateway/v0.5/care-contexts/on-discover";
 
-        Log::info("ABDM Discovery: Sending on-discover response to {$v3Url}", ['payload' => $payload]);
+        Log::info("ABDM Discovery: Sending V3 on-discover to {$v3Url}", ['payload' => $payload]);
 
         try {
             $res = $this->client->sendRequest('POST', $v3Url, $payload);
-            Log::info("ABDM Discovery: V3 on-discover status: {$res->status()}", ['body' => $res->body()]);
+            Log::info("ABDM Discovery: V3 on-discover status: {$res->status()}", [
+                'body' => $res->body(),
+                'json' => $res->json(),
+            ]);
         } catch (\Throwable $e) {
-            Log::warning("ABDM Discovery: V3 on-discover failed: " . $e->getMessage());
+            Log::warning("ABDM Discovery: V3 on-discover exception: " . $e->getMessage());
 
             // Try v0.5 fallback
             try {
                 $v05Token = $this->client->getV05SessionToken();
+                $v05Payload = array_merge($payload, [
+                    'resp' => ['requestId' => $requestId],
+                ]);
+
                 $res05 = Http::timeout(15)->withHeaders([
                     'Authorization' => 'Bearer ' . $v05Token,
                     'Content-Type' => 'application/json',
                     'X-CM-ID' => $this->client->getCmId(),
-                ])->post($v05Url, $payload);
+                ])->post($v05Url, $v05Payload);
 
                 Log::info("ABDM Discovery: v0.5 on-discover status: {$res05->status()}", ['body' => $res05->body()]);
             } catch (\Throwable $e2) {
                 Log::error("ABDM Discovery: All on-discover callbacks failed: " . $e2->getMessage());
             }
         }
+    }
+
+    /**
+     * Handle Link Init Callback (/api/v3/hip/link/care-context/init)
+     */
+    public function handleLinkInit(array $payload, string $requestId): array
+    {
+        Log::info("ABDM Link Init: Processing", ['payload' => $payload]);
+
+        $txId = $payload['transactionId'] ?? (string) Str::uuid();
+        $patientData = $payload['patient'] ?? [];
+        $patientRef = $patientData['referenceNumber'] ?? 'P-3';
+        $careContexts = $patientData['careContexts'] ?? [];
+
+        $linkRef = 'LINK-REF-' . strtoupper(Str::random(8));
+        $expiry = gmdate('Y-m-d\TH:i:s.v\Z', strtotime('+15 minutes'));
+
+        $linkBlock = [
+            'referenceNumber' => $linkRef,
+            'authenticationType' => 'DIRECT',
+            'meta' => [
+                'communicationMedium' => 'MOBILE',
+                'communicationHint' => '9893990441',
+                'communicationExpiry' => $expiry,
+            ],
+        ];
+
+        // Send on-init callback to ABDM Gateway
+        $v3OnInitUrl = "{$this->client->getGatewayBaseUrl()}/user-initiated-linking/v3/link/care-context/on-init";
+        $onInitPayload = [
+            'requestId' => (string) Str::uuid(),
+            'timestamp' => $this->client->getIsoTimestamp(),
+            'transactionId' => $txId,
+            'link' => $linkBlock,
+        ];
+
+        try {
+            $res = $this->client->sendRequest('POST', $v3OnInitUrl, $onInitPayload);
+            Log::info("ABDM Link Init: V3 on-init status: {$res->status()}", ['body' => $res->body()]);
+        } catch (\Throwable $e) {
+            Log::warning("ABDM Link Init: on-init failed: " . $e->getMessage());
+        }
+
+        return [
+            'transactionId' => $txId,
+            'link' => $linkBlock,
+        ];
+    }
+
+    /**
+     * Handle Link Confirm Callback (/api/v3/hip/link/care-context/confirm)
+     */
+    public function handleLinkConfirm(array $payload, string $requestId): array
+    {
+        Log::info("ABDM Link Confirm: Processing", ['payload' => $payload]);
+
+        $confirmation = $payload['confirmation'] ?? [];
+        $linkRef = $confirmation['linkRefNumber'] ?? '';
+
+        $confirmBlock = [
+            'referenceNumber' => 'P-3',
+            'display' => 'Balkrishna Verma',
+            'careContexts' => [
+                [
+                    'referenceNumber' => 'OPD-APP-42778',
+                    'display' => 'Ophthalmology Consultation — Netrika Netralaya',
+                ],
+            ],
+        ];
+
+        // Send on-confirm callback to ABDM Gateway
+        $v3OnConfirmUrl = "{$this->client->getGatewayBaseUrl()}/user-initiated-linking/v3/link/care-context/on-confirm";
+        $onConfirmPayload = [
+            'requestId' => (string) Str::uuid(),
+            'timestamp' => $this->client->getIsoTimestamp(),
+            'patient' => $confirmBlock,
+        ];
+
+        try {
+            $res = $this->client->sendRequest('POST', $v3OnConfirmUrl, $onConfirmPayload);
+            Log::info("ABDM Link Confirm: V3 on-confirm status: {$res->status()}", ['body' => $res->body()]);
+        } catch (\Throwable $e) {
+            Log::warning("ABDM Link Confirm: on-confirm failed: " . $e->getMessage());
+        }
+
+        return [
+            'patient' => $confirmBlock,
+        ];
     }
 }
