@@ -82,30 +82,62 @@ class AbdmBridgeService
      */
     public function addUpdateServices(?array $services = null): array
     {
-        $token = $this->client->getSessionToken();
-        $hipId = $this->client->getHipId() ?: $this->client->getClientId();
+        // Try getting v0.5 session token first (recommended for devservice), fallback to v3
+        $v05Token = null;
+        try {
+            $v05Token = $this->client->getV05SessionToken();
+            Log::info("ABDM Bridge: Obtained v0.5 session token successfully.");
+        } catch (\Throwable $e) {
+            Log::warning("ABDM Bridge: Could not obtain v0.5 session token: " . $e->getMessage());
+        }
+
+        $v3Token = $this->client->getSessionToken();
+        $token = $v05Token ?: $v3Token;
+
+        $hipId = $this->client->getHipId() ?: 'IN2310014055';
         $facilityName = config('abdm.facility_name', 'Netrika Netralaya');
         $callbackUrl = config('abdm.public_callback_url', url('/'));
 
         // Standard NHA payload structure (list of bridge services)
-        $payload = $services ?: [
+        $payloadWithHipId = [
             [
                 'id' => $hipId,
                 'name' => $facilityName,
                 'type' => 'HIP',
                 'active' => true,
-                'alias' => array_values(array_unique([$facilityName, 'Netrika Netralaya', 'Netrika', 'Netralaya'])),
-                'endpoints' => [
-                    [
-                        'address' => rtrim($callbackUrl, '/') . '/api/v3/hip/patient/share',
-                        'connectionType' => 'https',
-                        'use' => 'registration',
-                    ],
-                ],
+                'alias' => array_values(array_unique([$facilityName, $hipId, 'Netrika Netralaya'])),
             ],
         ];
 
-        // Candidate Payload A: Q17 HRP Object Format
+        $payloadWithBridgeId = [
+            [
+                'id' => $this->client->getClientId(),
+                'name' => $facilityName,
+                'type' => 'HIP',
+                'active' => true,
+                'alias' => array_values(array_unique([$facilityName, $this->client->getClientId(), 'Netrika Netralaya'])),
+            ],
+        ];
+
+        // Combined payload registering both HIP ID and Bridge ID
+        $combinedPayload = [
+            [
+                'id' => $hipId,
+                'name' => $facilityName,
+                'type' => 'HIP',
+                'active' => true,
+                'alias' => array_values(array_unique([$facilityName, $hipId])),
+            ],
+            [
+                'id' => $this->client->getClientId(),
+                'name' => $facilityName,
+                'type' => 'HIP',
+                'active' => true,
+                'alias' => array_values(array_unique([$facilityName, $this->client->getClientId()])),
+            ],
+        ];
+
+        // Candidate Payload: Q17 HRP Object Format
         $hrpPayload = [
             'facilityId' => $hipId,
             'facilityName' => $facilityName,
@@ -119,64 +151,58 @@ class AbdmBridgeService
             ],
         ];
 
-        // Candidate Payload B: Standard Bridge Services Array (with HIP ID)
-        $payloadWithHipId = $payload;
-
-        // Candidate Payload C: Standard Bridge Services Array (with Bridge ID as SERVICE_ID)
-        $payloadWithBridgeId = [
-            [
-                'id' => $this->client->getClientId(),
-                'name' => $facilityName,
-                'type' => 'HIP',
-                'active' => true,
-                'alias' => array_values(array_unique([$facilityName, 'Netrika Netralaya', 'Netrika'])),
-                'endpoints' => [
-                    [
-                        'address' => rtrim($callbackUrl, '/') . '/api/v3/hip/patient/share',
-                        'connectionType' => 'https',
-                        'use' => 'registration',
-                    ],
-                ],
-            ],
-        ];
-
         $attempts = [
+            // 1. Primary: PUT /devservice/v1/bridges/addUpdateServices with v0.5 token (NHA Official Documentation)
             [
-                'label' => 'dev.abdm.gov.in /addUpdateServices (Q17 HRP format)',
-                'url' => "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices",
-                'data' => $hrpPayload,
-                'method' => 'POST',
-            ],
-            [
-                'label' => 'dev.abdm.gov.in /addUpdateServices (Service Array with HIP ID)',
-                'url' => "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices",
-                'data' => $payloadWithHipId,
-                'method' => 'POST',
-            ],
-            [
-                'label' => 'dev.abdm.gov.in /addUpdateServices (Service Array with Bridge ID)',
-                'url' => "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices",
-                'data' => $payloadWithBridgeId,
-                'method' => 'POST',
-            ],
-            [
-                'label' => 'dev.abdm.gov.in /MutipleHRPAddUpdateServices (Q17 HRP format)',
-                'url' => "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/MutipleHRPAddUpdateServices",
-                'data' => $hrpPayload,
-                'method' => 'POST',
-            ],
-            [
-                'label' => 'V3 bridge-service (PUT)',
-                'url' => "{$this->client->getGatewayBaseUrl()}/gateway/v3/bridge-service",
-                'data' => $payloadWithHipId[0],
+                'label' => 'devservice /addUpdateServices (PUT with v0.5 token & combined IDs)',
+                'url' => 'https://dev.abdm.gov.in/devservice/v1/bridges/addUpdateServices',
+                'token' => $v05Token ?: $v3Token,
+                'data' => $combinedPayload,
                 'method' => 'PUT',
             ],
             [
-                'label' => 'facilitysbx MutipleHRP (Q17)',
-                'url' => 'https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices',
+                'label' => 'devservice /addUpdateServices (PUT with v0.5 token & HIP ID)',
+                'url' => 'https://dev.abdm.gov.in/devservice/v1/bridges/addUpdateServices',
+                'token' => $v05Token ?: $v3Token,
+                'data' => $payloadWithHipId,
+                'method' => 'PUT',
+            ],
+            [
+                'label' => 'devservice /addUpdateServices (PUT with v0.5 token & Bridge ID)',
+                'url' => 'https://dev.abdm.gov.in/devservice/v1/bridges/addUpdateServices',
+                'token' => $v05Token ?: $v3Token,
+                'data' => $payloadWithBridgeId,
+                'method' => 'PUT',
+            ],
+            [
+                'label' => 'devservice /addUpdateServices (POST with v0.5 token)',
+                'url' => 'https://dev.abdm.gov.in/devservice/v1/bridges/addUpdateServices',
+                'token' => $v05Token ?: $v3Token,
+                'data' => $combinedPayload,
+                'method' => 'POST',
+            ],
+            // 2. Secondary: PUT /devservice with v3 token if v0.5 was different
+            [
+                'label' => 'devservice /addUpdateServices (PUT with v3 token)',
+                'url' => 'https://dev.abdm.gov.in/devservice/v1/bridges/addUpdateServices',
+                'token' => $v3Token,
+                'data' => $combinedPayload,
+                'method' => 'PUT',
+            ],
+            // 3. Gateway endpoints fallback
+            [
+                'label' => 'dev.abdm.gov.in gateway /addUpdateServices (PUT)',
+                'url' => "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices",
+                'token' => $token,
+                'data' => $combinedPayload,
+                'method' => 'PUT',
+            ],
+            [
+                'label' => 'dev.abdm.gov.in gateway /addUpdateServices (POST)',
+                'url' => "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices",
+                'token' => $token,
                 'data' => $hrpPayload,
                 'method' => 'POST',
-                'timeout' => 3,
             ],
         ];
 
@@ -185,16 +211,21 @@ class AbdmBridgeService
         foreach ($attempts as $attempt) {
             $label = $attempt['label'];
             $targetUrl = $attempt['url'];
+            $attemptToken = $attempt['token'];
             $body = $attempt['data'];
             $method = $attempt['method'];
             $timeout = $attempt['timeout'] ?? 15;
+
+            if (empty($attemptToken)) {
+                continue;
+            }
 
             Log::info("ABDM Bridge: Attempting {$label} at {$targetUrl}", ['payload' => $body]);
 
             try {
                 $req = Http::timeout($timeout)
                     ->withHeaders([
-                        'Authorization' => 'Bearer ' . $token,
+                        'Authorization' => 'Bearer ' . $attemptToken,
                         'Content-Type' => 'application/json',
                         'Accept' => '*/*',
                         'X-CM-ID' => $this->client->getCmId(),
@@ -203,10 +234,10 @@ class AbdmBridgeService
                 $resp = $method === 'PUT' ? $req->put($targetUrl, $body) : $req->post($targetUrl, $body);
 
                 if ($resp->successful()) {
-                    Log::info("ABDM Bridge: SUCCESS on {$label}!", ['response' => $resp->json()]);
+                    Log::info("ABDM Bridge: SUCCESS on {$label}!", ['response' => $resp->json() ?? $resp->body()]);
                     return [
                         'status' => 'success',
-                        'message' => "HIP service registered successfully via {$label}.",
+                        'message' => "Facility HIP registered successfully via {$label}.",
                         'data' => $resp->json() ?? $resp->body(),
                     ];
                 }
@@ -225,10 +256,8 @@ class AbdmBridgeService
 
         if (str_contains($allErrors, '900908') || str_contains($allErrors, 'API Subscription validation failed')) {
             throw new Exception(
-                "NHA Sandbox Notice (403): Bridge Client ID is not subscribed to the legacy V1 addUpdateServices API.\n\n" .
-                "Attempts summary:\n{$allErrors}\n\n" .
-                "In ABDM V3, NHA requires backend mapping or Software Linkage on the portal. " .
-                "Since 'Get Details' on HFR returns 'No Existing Data', Bridge SBXID_075083 must be mapped to IN2310014055 by NHA support: integration.support@nha.gov.in."
+                "NHA Sandbox Notice: Registration attempts returned:\n\n{$allErrors}\n\n" .
+                "If devservice also fails, Client ID {$this->client->getClientId()} requires NHA backend subscription sync (integration.support@nha.gov.in)."
             );
         }
 
@@ -257,6 +286,21 @@ class AbdmBridgeService
             return is_array($data) ? $data : ['response' => $data];
         }
 
+        // Fallback to devservice endpoint
+        $devUrl = "https://dev.abdm.gov.in/devservice/v1/bridges/getServices";
+        $devResp = Http::timeout(20)
+            ->withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'Accept' => 'application/json',
+            ])
+            ->get($devUrl);
+
+        if ($devResp->successful()) {
+            $data = $devResp->json();
+            Log::info("ABDM Bridge: getServices devservice response", ['data' => $data]);
+            return is_array($data) ? $data : ['response' => $data];
+        }
+
         // Fallback to legacy endpoint from NHA email
         $v1Url = "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/getServices";
         $v1Resp = Http::timeout(20)
@@ -273,7 +317,7 @@ class AbdmBridgeService
             return is_array($data) ? $data : ['response' => $data];
         }
 
-        $error = $response->body() ?: $v1Resp->body();
+        $error = $response->body() ?: ($devResp->body() ?: $v1Resp->body());
         Log::error("ABDM Get Services failed: {$error}");
         throw new Exception("Failed to fetch Bridge Services ({$response->status()}): {$error}");
     }

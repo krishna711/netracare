@@ -148,6 +148,61 @@ class AbdmClient
     }
 
     /**
+     * Get v0.5 session token for legacy / devservice ABDM endpoints.
+     *
+     * @param bool $forceRefresh
+     * @return string
+     * @throws Exception
+     */
+    public function getV05SessionToken(bool $forceRefresh = false): string
+    {
+        $cacheKey = 'abdm_v05_session_token_' . md5($this->clientId);
+
+        if (!$forceRefresh && Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
+        }
+
+        if (empty($this->clientId) || empty($this->clientSecret)) {
+            throw new Exception("ABDM Client ID and Client Secret must be configured in Settings or .env.");
+        }
+
+        $url = "https://dev.abdm.gov.in/gateway/v0.5/sessions";
+        Log::info("ABDM: Requesting v0.5 session token from {$url}");
+
+        $response = Http::timeout(15)
+            ->withHeaders([
+                'Content-Type' => 'application/json',
+            ])
+            ->post($url, [
+                'clientId' => $this->clientId,
+                'clientSecret' => $this->clientSecret,
+            ]);
+
+        if (!$response->successful()) {
+            $errorMsg = $response->json('message') 
+                ?? $response->json('error.message') 
+                ?? $response->json('error') 
+                ?? $response->body();
+
+            Log::error("ABDM v0.5 Session Error [{$response->status()}]: {$errorMsg}");
+            throw new Exception("ABDM v0.5 Authentication Failed ({$response->status()}): {$errorMsg}");
+        }
+
+        $data = $response->json();
+        $token = $data['accessToken'] ?? null;
+        $expiresIn = (int) ($data['expiresIn'] ?? 1200);
+
+        if (empty($token)) {
+            throw new Exception("Invalid response from ABDM Gateway v0.5: accessToken missing.");
+        }
+
+        $ttl = max(60, $expiresIn - 60);
+        Cache::put($cacheKey, $token, $ttl);
+
+        return $token;
+    }
+
+    /**
      * Fetch ABDM Public Encryption Certificate from Gateway/ABHA API.
      *
      * @param bool $forceRefresh
