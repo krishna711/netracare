@@ -105,7 +105,7 @@ class AbdmBridgeService
             ],
         ];
 
-        // 1. Try HFR Facility Registry mapping (MutipleHRPAddUpdateServices)
+        // 1. Try HFR Facility Registry mapping (MutipleHRPAddUpdateServices from FAQ Q17)
         $hfrUrl = "https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices";
         $hrpPayload = [
             'facilityId' => $hipId,
@@ -117,16 +117,11 @@ class AbdmBridgeService
                     'type' => 'HIP',
                     'active' => true,
                 ],
-                [
-                    'bridgeId' => $this->client->getClientId(),
-                    'hipName' => $facilityName,
-                    'type' => 'HIU',
-                    'active' => true,
-                ],
             ],
         ];
 
         Log::info("ABDM Bridge: Attempting HFR service mapping at {$hfrUrl}", ['payload' => $hrpPayload]);
+        $hfrError = null;
         try {
             $hfrResp = Http::timeout(20)
                 ->withHeaders([
@@ -144,9 +139,11 @@ class AbdmBridgeService
                     'data' => $hfrResp->json() ?? $hfrResp->body(),
                 ];
             }
-            Log::warning("ABDM Bridge: HFR endpoint returned " . $hfrResp->status() . ": " . substr($hfrResp->body(), 0, 200));
+            $hfrError = "HFR ({$hfrResp->status()}): " . $hfrResp->body();
+            Log::warning("ABDM Bridge: {$hfrError}");
         } catch (\Throwable $e) {
-            Log::warning("ABDM Bridge: HFR registration error: " . $e->getMessage());
+            $hfrError = "HFR Error: " . $e->getMessage();
+            Log::warning("ABDM Bridge: {$hfrError}");
         }
 
         // 2. Official endpoint from NHA email: POST /gateway/v1/bridges/addUpdateServices
@@ -189,15 +186,16 @@ class AbdmBridgeService
         $error = $response->body() ?: $v3Resp->body();
         Log::error("ABDM Bridge Service registration failed: {$error}");
 
+        $details = $hfrError ? "[HFR Response]: {$hfrError}\n" : "";
+
         if (str_contains($error, '900908') || str_contains($error, 'API Subscription validation failed')) {
             throw new Exception(
-                "NHA Sandbox V3 Notice (403): V3 Bridge Client IDs are not subscribed to the legacy V1 addUpdateServices API. " .
-                "In ABDM V3, facility HIP linking is completed via the ABDM Sandbox Portal (Mock Facility Registry) or automatically by NHA Integration Support upon replying to your onboarding ticket. " .
-                "Your Bridge URL is already updated and verified! Click '3. View Registered Services' or reply to integration.support@nha.gov.in with your Bridge ID: {$hipId}."
+                "{$details}NHA Sandbox Notice (403): Bridge Client ID is not subscribed to the legacy V1 addUpdateServices API. " .
+                "In ABDM V3, facility HIP linking requires NHA support mapping. Reply to integration.support@nha.gov.in with Bridge ID: {$this->client->getClientId()} and Facility ID: {$hipId}."
             );
         }
 
-        throw new Exception("Failed to add/update Bridge Services ({$response->status()}): {$error}");
+        throw new Exception("{$details}Failed to add/update Bridge Services ({$response->status()}): {$error}");
     }
 
     /**
