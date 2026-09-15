@@ -18,3 +18,17 @@ Route::prefix('v3/hip')->group(function () {
     Route::post('/health-information/request', [AbdmWebhookController::class, 'handleHealthInfoRequest']);
     Route::post('/consent/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
 });
+
+// v0.5 Legacy endpoints (called by PHR / Gateway in v0.5 mode)
+Route::prefix('v0.5')->group(function () {
+    Route::post('/care-contexts/discover', [AbdmWebhookController::class, 'handleCareContextDiscover']);
+    Route::post('/link/care-contexts/init', [AbdmWebhookController::class, 'handleLinkInit']);
+    Route::post('/link/care-contexts/confirm', [AbdmWebhookController::class, 'handleLinkConfirm']);
+    Route::post('/health-information/hip/request', [AbdmWebhookController::class, 'handleHealthInfoRequest']);
+    Route::post('/consents/hip/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+});
+
+// v1.0 Scan and share
+Route::prefix('v1.0')->group(function () {
+    Route::post('/patients/profile/share', [AbdmWebhookController::class, 'handlePatientShare']);
+});
