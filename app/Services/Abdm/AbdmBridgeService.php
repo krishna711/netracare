@@ -94,7 +94,7 @@ class AbdmBridgeService
                 'name' => $facilityName,
                 'type' => 'HIP',
                 'active' => true,
-                'alias' => [$facilityName],
+                'alias' => array_values(array_unique([$facilityName, 'Netrika Netralaya', 'Netrika', 'Netralaya'])),
                 'endpoints' => [
                     [
                         'address' => rtrim($callbackUrl, '/') . '/api/v3/hip/patient/share',
@@ -105,7 +105,51 @@ class AbdmBridgeService
             ],
         ];
 
-        // Primary: Official endpoint from NHA email
+        // 1. Try HFR Facility Registry mapping (MutipleHRPAddUpdateServices)
+        $hfrUrl = "https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices";
+        $hrpPayload = [
+            'facilityId' => $hipId,
+            'facilityName' => $facilityName,
+            'HRP' => [
+                [
+                    'bridgeId' => $this->client->getClientId(),
+                    'hipName' => $facilityName,
+                    'type' => 'HIP',
+                    'active' => true,
+                ],
+                [
+                    'bridgeId' => $this->client->getClientId(),
+                    'hipName' => $facilityName,
+                    'type' => 'HIU',
+                    'active' => true,
+                ],
+            ],
+        ];
+
+        Log::info("ABDM Bridge: Attempting HFR service mapping at {$hfrUrl}", ['payload' => $hrpPayload]);
+        try {
+            $hfrResp = Http::timeout(20)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])
+                ->post($hfrUrl, $hrpPayload);
+
+            if ($hfrResp->successful()) {
+                Log::info("ABDM Bridge: Successfully registered with HFR!", ['response' => $hfrResp->json()]);
+                return [
+                    'status' => 'success',
+                    'message' => "Facility {$hipId} successfully linked to Bridge {$this->client->getClientId()} in HFR Registry.",
+                    'data' => $hfrResp->json() ?? $hfrResp->body(),
+                ];
+            }
+            Log::warning("ABDM Bridge: HFR endpoint returned " . $hfrResp->status() . ": " . substr($hfrResp->body(), 0, 200));
+        } catch (\Throwable $e) {
+            Log::warning("ABDM Bridge: HFR registration error: " . $e->getMessage());
+        }
+
+        // 2. Official endpoint from NHA email: POST /gateway/v1/bridges/addUpdateServices
         $url = "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices";
         Log::info("ABDM Bridge: Registering HIP service at {$url}", ['payload' => $payload]);
 
