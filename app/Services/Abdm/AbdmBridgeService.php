@@ -94,7 +94,7 @@ class AbdmBridgeService
         $v3Token = $this->client->getSessionToken();
         $token = $v05Token ?: $v3Token;
 
-        $hipId = $this->client->getHipId() ?: 'IN2310014055';
+        $hipId = $this->client->getHipId() ?: 'IN2310001444';
         $facilityName = config('abdm.facility_name', 'Netrika Netralaya');
         $callbackUrl = config('abdm.public_callback_url', url('/'));
 

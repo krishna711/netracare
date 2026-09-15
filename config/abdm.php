@@ -33,7 +33,7 @@ return [
     | Facility & HIP Configuration
     |--------------------------------------------------------------------------
     */
-    'hip_id' => env('ABDM_HIP_ID', 'IN2310001895'), // Your registered Facility / HIP ID
+    'hip_id' => env('ABDM_HIP_ID', 'IN2310001444'), // Your registered Facility / HIP ID
     'facility_name' => env('ABDM_FACILITY_NAME', 'Netrika Netralaya'),
     'counter_id' => env('ABDM_COUNTER_ID', '1'),
     'public_callback_url' => env('ABDM_PUBLIC_URL', env('APP_URL', 'http://localhost')),
