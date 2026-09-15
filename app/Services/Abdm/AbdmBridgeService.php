@@ -105,8 +105,7 @@ class AbdmBridgeService
             ],
         ];
 
-        // 1. Try HFR Facility Registry mapping (MutipleHRPAddUpdateServices from FAQ Q17)
-        $hfrUrl = "https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices";
+        // Candidate Payload A: Q17 HRP Object Format
         $hrpPayload = [
             'facilityId' => $hipId,
             'facilityName' => $facilityName,
@@ -120,82 +119,120 @@ class AbdmBridgeService
             ],
         ];
 
-        Log::info("ABDM Bridge: Attempting HFR service mapping at {$hfrUrl}", ['payload' => $hrpPayload]);
-        $hfrError = null;
-        try {
-            $hfrResp = Http::timeout(20)
-                ->withHeaders([
-                    'Authorization' => 'Bearer ' . $token,
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
-                ])
-                ->post($hfrUrl, $hrpPayload);
+        // Candidate Payload B: Standard Bridge Services Array (with HIP ID)
+        $payloadWithHipId = $payload;
 
-            if ($hfrResp->successful()) {
-                Log::info("ABDM Bridge: Successfully registered with HFR!", ['response' => $hfrResp->json()]);
-                return [
-                    'status' => 'success',
-                    'message' => "Facility {$hipId} successfully linked to Bridge {$this->client->getClientId()} in HFR Registry.",
-                    'data' => $hfrResp->json() ?? $hfrResp->body(),
-                ];
+        // Candidate Payload C: Standard Bridge Services Array (with Bridge ID as SERVICE_ID)
+        $payloadWithBridgeId = [
+            [
+                'id' => $this->client->getClientId(),
+                'name' => $facilityName,
+                'type' => 'HIP',
+                'active' => true,
+                'alias' => array_values(array_unique([$facilityName, 'Netrika Netralaya', 'Netrika'])),
+                'endpoints' => [
+                    [
+                        'address' => rtrim($callbackUrl, '/') . '/api/v3/hip/patient/share',
+                        'connectionType' => 'https',
+                        'use' => 'registration',
+                    ],
+                ],
+            ],
+        ];
+
+        $attempts = [
+            [
+                'label' => 'dev.abdm.gov.in /addUpdateServices (Q17 HRP format)',
+                'url' => "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices",
+                'data' => $hrpPayload,
+                'method' => 'POST',
+            ],
+            [
+                'label' => 'dev.abdm.gov.in /addUpdateServices (Service Array with HIP ID)',
+                'url' => "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices",
+                'data' => $payloadWithHipId,
+                'method' => 'POST',
+            ],
+            [
+                'label' => 'dev.abdm.gov.in /addUpdateServices (Service Array with Bridge ID)',
+                'url' => "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices",
+                'data' => $payloadWithBridgeId,
+                'method' => 'POST',
+            ],
+            [
+                'label' => 'dev.abdm.gov.in /MutipleHRPAddUpdateServices (Q17 HRP format)',
+                'url' => "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/MutipleHRPAddUpdateServices",
+                'data' => $hrpPayload,
+                'method' => 'POST',
+            ],
+            [
+                'label' => 'V3 bridge-service (PUT)',
+                'url' => "{$this->client->getGatewayBaseUrl()}/gateway/v3/bridge-service",
+                'data' => $payloadWithHipId[0],
+                'method' => 'PUT',
+            ],
+            [
+                'label' => 'facilitysbx MutipleHRP (Q17)',
+                'url' => 'https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices',
+                'data' => $hrpPayload,
+                'method' => 'POST',
+                'timeout' => 3,
+            ],
+        ];
+
+        $errors = [];
+
+        foreach ($attempts as $attempt) {
+            $label = $attempt['label'];
+            $targetUrl = $attempt['url'];
+            $body = $attempt['data'];
+            $method = $attempt['method'];
+            $timeout = $attempt['timeout'] ?? 15;
+
+            Log::info("ABDM Bridge: Attempting {$label} at {$targetUrl}", ['payload' => $body]);
+
+            try {
+                $req = Http::timeout($timeout)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer ' . $token,
+                        'Content-Type' => 'application/json',
+                        'Accept' => '*/*',
+                        'X-CM-ID' => $this->client->getCmId(),
+                    ]);
+
+                $resp = $method === 'PUT' ? $req->put($targetUrl, $body) : $req->post($targetUrl, $body);
+
+                if ($resp->successful()) {
+                    Log::info("ABDM Bridge: SUCCESS on {$label}!", ['response' => $resp->json()]);
+                    return [
+                        'status' => 'success',
+                        'message' => "HIP service registered successfully via {$label}.",
+                        'data' => $resp->json() ?? $resp->body(),
+                    ];
+                }
+
+                $respBody = $resp->body();
+                $errors[] = "[{$label}] HTTP {$resp->status()}: " . substr($respBody, 0, 150);
+                Log::warning("ABDM Bridge {$label} returned {$resp->status()}: {$respBody}");
+            } catch (\Throwable $e) {
+                $errors[] = "[{$label}] Exception: " . $e->getMessage();
+                Log::warning("ABDM Bridge {$label} exception: " . $e->getMessage());
             }
-            $hfrError = "HFR ({$hfrResp->status()}): " . $hfrResp->body();
-            Log::warning("ABDM Bridge: {$hfrError}");
-        } catch (\Throwable $e) {
-            $hfrError = "HFR Error: " . $e->getMessage();
-            Log::warning("ABDM Bridge: {$hfrError}");
         }
 
-        // 2. Official endpoint from NHA email: POST /gateway/v1/bridges/addUpdateServices
-        $url = "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges/addUpdateServices";
-        Log::info("ABDM Bridge: Registering HIP service at {$url}", ['payload' => $payload]);
+        $allErrors = implode("\n", $errors);
+        Log::error("ABDM Bridge: All registration attempts failed:\n{$allErrors}");
 
-        $response = Http::timeout(25)
-            ->withHeaders([
-                'Authorization' => 'Bearer ' . $token,
-                'Content-Type' => 'application/json',
-                'Accept' => '*/*',
-                'X-CM-ID' => $this->client->getCmId(),
-            ])
-            ->post($url, $payload);
-
-        if ($response->successful()) {
-            return [
-                'status' => 'success',
-                'message' => 'HIP service registered successfully in ABDM Bridge.',
-                'data' => $response->json() ?? $response->body(),
-            ];
-        }
-
-        // Secondary / V3 Fallback: PUT https://dev.abdm.gov.in/api/hiecm/gateway/v3/bridge-service
-        $v3Url = "{$this->client->getGatewayBaseUrl()}/gateway/v3/bridge-service";
-        Log::info("ABDM Bridge: Trying V3 bridge-service registration at {$v3Url}");
-
-        $v3Resp = Http::timeout(25)
-            ->withHeaders($this->client->getStandardHeaders($token))
-            ->put($v3Url, $payload[0]);
-
-        if ($v3Resp->successful()) {
-            return [
-                'status' => 'success',
-                'message' => 'HIP service registered successfully in ABDM Gateway V3.',
-                'data' => $v3Resp->json() ?? $v3Resp->body(),
-            ];
-        }
-
-        $error = $response->body() ?: $v3Resp->body();
-        Log::error("ABDM Bridge Service registration failed: {$error}");
-
-        $details = $hfrError ? "[HFR Response]: {$hfrError}\n" : "";
-
-        if (str_contains($error, '900908') || str_contains($error, 'API Subscription validation failed')) {
+        if (str_contains($allErrors, '900908') || str_contains($allErrors, 'API Subscription validation failed')) {
             throw new Exception(
-                "{$details}NHA Sandbox Notice (403): Bridge Client ID is not subscribed to the legacy V1 addUpdateServices API. " .
-                "In ABDM V3, facility HIP linking requires NHA support mapping. Reply to integration.support@nha.gov.in with Bridge ID: {$this->client->getClientId()} and Facility ID: {$hipId}."
+                "NHA Sandbox Notice (403): Bridge Client ID is not subscribed to the legacy V1 addUpdateServices API.\n\n" .
+                "Attempts summary:\n{$allErrors}\n\n" .
+                "In ABDM V3, NHA requires backend mapping or Software Linkage on the portal. " .
+                "Since 'Get Details' on HFR returns 'No Existing Data', Bridge SBXID_075083 must be mapped to IN2310014055 by NHA support: integration.support@nha.gov.in."
             );
         }
 
-        throw new Exception("{$details}Failed to add/update Bridge Services ({$response->status()}): {$error}");
+        throw new Exception("Failed to register Bridge Services. Results:\n{$allErrors}");
     }
 
     /**
