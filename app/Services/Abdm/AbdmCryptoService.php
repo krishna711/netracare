@@ -77,7 +77,7 @@ class AbdmCryptoService
     public function generateKeyMaterial(): array
     {
         $nonce = random_bytes(32);
-        $expiry = now()->addDays(2)->toISOString();
+        $expiry = gmdate('Y-m-d\TH:i:s.000\Z', strtotime('+2 days'));
 
         if (function_exists('sodium_crypto_box_keypair')) {
             $keypair = sodium_crypto_box_keypair();

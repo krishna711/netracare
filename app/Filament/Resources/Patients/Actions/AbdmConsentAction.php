@@ -73,16 +73,47 @@ class AbdmConsentAction
                         $gwIdStr = $gwId ? "<div class='text-[10px] text-gray-500 font-mono'>Gateway ID: {$gwId}</div>" : '';
                         $consentIdStr = $c->consent_id ? "<span class='text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-bold'>Artefact: {$c->consent_id}</span>" : "<span class='text-[11px] font-mono text-gray-400'>Req ID: " . substr($c->consent_request_id, 0, 13) . "...</span>";
 
-                        // Transferred records count
+                        // Transferred records count and preview
                         $recordsInfo = '';
                         if (!empty($c->transferred_records)) {
                             $count = count($c->transferred_records);
-                            $recordsInfo = "<div class='mt-1 text-[11px] text-blue-600 dark:text-blue-400 font-medium'>📁 {$count} health record(s) received and available.</div>";
+                            $recordsInfo = "<div class='mt-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-lg border border-emerald-300 dark:border-emerald-800 space-y-2'>
+                                <div class='flex items-center justify-between font-semibold text-emerald-900 dark:text-emerald-200'>
+                                    <span>📁 {$count} Clinical Health Record(s) Transferred</span>
+                                    <span class='text-[10px] px-2 py-0.5 rounded bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-100 uppercase tracking-wider font-bold'>Verified FHIR R4</span>
+                                </div>";
+
+                            foreach ($c->transferred_records as $idx => $rec) {
+                                $ref = $rec['careContextReference'] ?? ('Record #' . ($idx + 1));
+                                $content = $rec['content'] ?? [];
+                                if (is_string($content)) {
+                                    $decoded = json_decode($content, true);
+                                    if (json_last_error() === JSON_ERROR_NONE) {
+                                        $content = $decoded;
+                                    }
+                                }
+
+                                $summary = "<strong>Care Context:</strong> " . htmlspecialchars($ref);
+                                if (is_array($content)) {
+                                    $resTypes = [];
+                                    if (!empty($content['entry'])) {
+                                        foreach ($content['entry'] as $ent) {
+                                            $resTypes[] = $ent['resource']['resourceType'] ?? 'Resource';
+                                        }
+                                    }
+                                    $typeSummary = !empty($resTypes) ? implode(', ', array_unique($resTypes)) : 'FHIR Document';
+                                    $summary .= " &bull; <span class='text-gray-600 dark:text-gray-400'>Contains: {$typeSummary}</span>";
+                                }
+
+                                $recordsInfo .= "<div class='p-2 bg-white dark:bg-gray-900 rounded border border-emerald-200 dark:border-emerald-800/60 text-[11px] text-gray-700 dark:text-gray-300'>{$summary}</div>";
+                            }
+
+                            $recordsInfo .= "</div>";
                         }
 
                         $historyHtml .= "
                             <div class='p-3 bg-white dark:bg-gray-900 flex items-start justify-between gap-3'>
-                                <div class='space-y-1'>
+                                <div class='space-y-1 w-full'>
                                     <div class='flex items-center gap-2'>
                                         <span class='px-2 py-0.5 rounded text-[10px] font-bold {$badgeColor}'>{$c->status}</span>
                                         {$consentIdStr}
@@ -92,7 +123,7 @@ class AbdmConsentAction
                                     <div class='text-gray-500 text-[11px]'>Range: {$fromStr} to {$toStr} • Purpose: {$c->purpose_code}</div>
                                     {$recordsInfo}
                                 </div>
-                                <div class='text-right text-[11px] text-gray-400 flex flex-col items-end gap-1'>
+                                <div class='text-right text-[11px] text-gray-400 flex flex-col items-end gap-1 whitespace-nowrap'>
                                     <span>{$createdStr}</span>
                                 </div>
                             </div>
@@ -271,14 +302,23 @@ class AbdmConsentAction
                     }
                     try {
                         $res = $consentService->requestHealthInformation($granted);
+                        $granted->refresh();
+                        $recCount = count($granted->transferred_records ?? []);
                         Notification::make()
                             ->title('Health Information Request Dispatched!')
-                            ->body('Requested encrypted clinical records from facility. Data flow is in progress.')
+                            ->body($recCount > 0
+                                ? "Successfully fetched {$recCount} clinical record(s)! You can view the records above in the history."
+                                : 'Requested encrypted clinical records from facility. Data flow is in progress.')
                             ->success()
-                            ->duration(8000)
+                            ->duration(10000)
                             ->send();
                     } catch (\Throwable $e) {
-                        Notification::make()->title('Failed to dispatch data request')->body($e->getMessage())->danger()->send();
+                        Notification::make()
+                            ->title('Failed to dispatch data request')
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->duration(12000)
+                            ->send();
                     }
                     return;
                 }

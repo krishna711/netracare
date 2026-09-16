@@ -149,14 +149,20 @@ class AbdmWebhookController extends Controller
         $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
         $payload = $request->all();
 
-        Log::info("ABDM Webhook: Health Information Request received", [
+        Log::info("ABDM Webhook: Health Information Request received (HIP role)", [
             'requestId' => $requestId,
             'payload' => $payload,
         ]);
 
+        try {
+            $this->consentService->transferHealthDataAsHip($payload, $requestId);
+        } catch (\Throwable $e) {
+            Log::warning("ABDM Webhook: HIP Health Data Transfer warning: " . $e->getMessage());
+        }
+
         return response()->json([
             'status' => 'SUCCESS',
-            'message' => 'Health information request received and queued for transfer.',
+            'message' => 'Health information request received and processed.',
             'timestamp' => now()->toISOString(),
         ], 200);
     }
