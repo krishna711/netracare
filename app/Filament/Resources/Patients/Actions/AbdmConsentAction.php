@@ -192,8 +192,8 @@ class AbdmConsentAction
                         'hi_types' => $data['hi_types'] ?? ['OPConsultation'],
                         'hip_id' => ($data['hip_mode'] ?? 'NETRIKA') === 'NETRIKA' ? 'IN2310001444' : null,
                         'date_from' => $data['date_from'] ?? now()->subYears(2)->format('Y-m-d'),
-                        'date_to' => isset($data['date_to']) ? ($data['date_to'] . ' 23:59:59') : now()->endOfDay(),
-                        'data_erase_at' => isset($data['data_erase_at']) ? ($data['data_erase_at'] . ' 23:59:59') : now()->addMonths(1)->endOfDay(),
+                        'date_to' => $data['date_to'] ?? now()->format('Y-m-d'),
+                        'data_erase_at' => $data['data_erase_at'] ?? now()->addMonths(1)->format('Y-m-d'),
                     ];
 
                     $result = $consentService->initConsentRequest($record, $options);

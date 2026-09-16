@@ -36,13 +36,27 @@ class AbdmConsentService
         $purpose = $options['purpose'] ?? 'CAREMGT';
         $hiTypes = $options['hi_types'] ?? ['OPConsultation'];
 
-        $from = $this->formatAbdmDate($options['date_from'] ?? now()->subYears(3));
         $rawTo = $options['date_to'] ?? now();
-        if (is_string($rawTo) && strlen(trim($rawTo)) === 10) {
-            $rawTo .= ' 23:59:59';
+        $toTs = is_numeric($rawTo) ? (int)$rawTo : strtotime((string)$rawTo);
+        // ABDM Rule: 'to' date must be present/before date (cannot be in future)
+        if ($toTs === false || $toTs > time()) {
+            $toTs = time();
         }
-        $to = $this->formatAbdmDate($rawTo);
-        $eraseAt = $this->formatAbdmDate($options['data_erase_at'] ?? now()->addMonths(1));
+        $to = gmdate('Y-m-d\TH:i:s.000\Z', $toTs);
+
+        $rawFrom = $options['date_from'] ?? now()->subYears(3);
+        $fromTs = is_numeric($rawFrom) ? (int)$rawFrom : strtotime((string)$rawFrom);
+        if ($fromTs === false || $fromTs > $toTs) {
+            $fromTs = strtotime('-3 years', $toTs);
+        }
+        $from = gmdate('Y-m-d\TH:i:s.000\Z', $fromTs);
+
+        $rawErase = $options['data_erase_at'] ?? now()->addMonths(1);
+        $eraseTs = is_numeric($rawErase) ? (int)$rawErase : strtotime((string)$rawErase);
+        if ($eraseTs === false || $eraseTs <= time()) {
+            $eraseTs = strtotime('+1 month');
+        }
+        $eraseAt = gmdate('Y-m-d\TH:i:s.000\Z', $eraseTs);
 
         $consentRequestId = (string) Str::uuid();
 
