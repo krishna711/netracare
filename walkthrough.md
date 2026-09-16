@@ -123,3 +123,31 @@ Right from the **ABDM Settings** page header:
 2. The reception counter QR code is displayed on the left.
 3. When patients scan this code with their ABHA app, their details instantly appear in the **Incoming Patient Check-In Queue**.
 4. Click **"Register & Book OPD"** to create their patient record and schedule their consultation in 1 click!
+
+### Step 5: Test M2 Discovery & Linking on PHR App / Portal
+1. Open the ABDM PHR Sandbox app or portal at `https://phrsbx.abdm.gov.in`.
+2. Search for the registered facility: `Netrika Netralaya` (HIP ID: `IN2310001444`).
+3. Click **"Fetch Records"**.
+4. NetraCare receives the inbound discovery request at `/v3/hip/patient/care-context/discover`, matches patient record #3, and immediately returns the clean ASCII care contexts synchronously and via `on-discover`.
+5. The patient's visit (`OPD-APP-42778`) appears on screen. Click to link and complete the OTP verification.
+
+---
+
+## ABDM Milestone 2 (M2) Patient Discovery & Linking
+
+### Key Architecture & Protocol Alignments
+1. **Synchronous V3 Response:**
+   - In ABDM V3, the gateway expects the matching care contexts returned directly in the HTTP 200 response body of the discovery webhook, rather than exclusively relying on the asynchronous callback.
+   - NetraCare now returns the full discovery response structure synchronously in `AbdmWebhookController::handleCareContextDiscover`.
+
+2. **Strict V3 Gateway Callback Headers:**
+   - Outbound callbacks (`on-discover`, `on-init`, `on-confirm`) strictly send:
+     - `Content-Type: application/json`
+     - `Authorization: Bearer <token>`
+     - `X-CM-ID: sbx`
+   - Removed extra headers (`REQUEST-ID`, `TIMESTAMP`, `Accept`) that triggered WSO2 API Gateway `400 Bad Request` with 0-byte body.
+
+3. **ASCII Text Sanitization for NHA Schema Compliance:**
+   - Converted unicode em-dashes `—` (`\u2014`) to standard ASCII hyphens `-`.
+   - Stripped redundant prefix duplicates (e.g. `Dr. Dr.`).
+   - Ensured all display names adhere to NHA regex restrictions (`^[a-zA-Z0-9 .,/()_-]+$`).
