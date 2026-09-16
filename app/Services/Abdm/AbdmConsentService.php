@@ -42,7 +42,11 @@ class AbdmConsentService
         ];
 
         $from = $this->formatAbdmDate($options['date_from'] ?? now()->subYears(3));
-        $to = $this->formatAbdmDate($options['date_to'] ?? now());
+        $rawTo = $options['date_to'] ?? now();
+        if (is_string($rawTo) && strlen(trim($rawTo)) === 10) {
+            $rawTo .= ' 23:59:59';
+        }
+        $to = $this->formatAbdmDate($rawTo);
         $eraseAt = $this->formatAbdmDate($options['data_erase_at'] ?? now()->addMonths(1));
 
         $consentRequestId = (string) Str::uuid();
