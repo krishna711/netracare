@@ -178,6 +178,23 @@ class AbdmConsentService
      */
     public function getConsentStatus(string $consentRequestId): array
     {
+        $consent = AbdmConsent::where('consent_request_id', $consentRequestId)
+            ->orWhereJsonContains('metadata->gateway_consent_request_id', $consentRequestId)
+            ->orWhere('id', $consentRequestId)
+            ->first()
+            ?: AbdmConsent::where('status', 'REQUESTED')->latest()->first()
+            ?: AbdmConsent::latest()->first();
+
+        // If local record has a gateway consent request ID in metadata, prefer it
+        $effectiveReqId = $consent && !empty($consent->metadata['gateway_consent_request_id'])
+            ? $consent->metadata['gateway_consent_request_id']
+            : $consentRequestId;
+
+        // Also check if any recent on-init webhook payload exists in metadata
+        if ($consent && $effectiveReqId === $consentRequestId && !empty($consent->metadata['on_init_payload']['consentRequest']['id'])) {
+            $effectiveReqId = $consent->metadata['on_init_payload']['consentRequest']['id'];
+        }
+
         $hiuId = $this->client->getHipId() ?: 'IN2310001444';
         $url = "{$this->client->getGatewayBaseUrl()}/consent/v3/request/status";
 
@@ -191,13 +208,39 @@ class AbdmConsentService
         ];
 
         $payload = [
-            'consentRequestId' => $consentRequestId,
+            'consentRequestId' => $effectiveReqId,
         ];
 
+        Log::info("ABDM M3: Checking Consent Status for {$effectiveReqId}");
         $response = Http::timeout(15)->withHeaders($headers)->post($url, $payload);
+
+        $data = $response->json();
+        if ($response->successful() && !empty($data['consentRequest']['status'])) {
+            $st = strtoupper($data['consentRequest']['status']);
+            $cid = $data['consentRequest']['consentArtefacts'][0]['id'] ?? null;
+            if ($consent) {
+                $consent->update([
+                    'status' => $st,
+                    'consent_id' => $cid ?: $consent->consent_id,
+                ]);
+            }
+        }
+
+        // Wait up to 2 seconds for asynchronous on-status callback to process if still REQUESTED
+        if ($consent && $consent->status !== 'GRANTED') {
+            for ($i = 0; $i < 2; $i++) {
+                sleep(1);
+                $consent->refresh();
+                if ($consent->status === 'GRANTED') {
+                    break;
+                }
+            }
+        }
+
         return [
             'status' => $response->status(),
-            'data' => $response->json() ?? $response->body(),
+            'data' => $data ?? $response->body(),
+            'effectiveReqId' => $effectiveReqId,
         ];
     }
 
@@ -222,7 +265,14 @@ class AbdmConsentService
         // Update local consent record
         $record = null;
         if ($consentRequestId) {
-            $record = AbdmConsent::where('consent_request_id', $consentRequestId)->first();
+            $record = AbdmConsent::where('consent_request_id', $consentRequestId)
+                ->orWhereJsonContains('metadata->gateway_consent_request_id', $consentRequestId)
+                ->first();
+        }
+
+        if (!$record) {
+            $record = AbdmConsent::where('status', 'REQUESTED')->latest()->first()
+                ?: AbdmConsent::latest()->first();
         }
 
         if ($record) {

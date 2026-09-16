@@ -190,10 +190,26 @@ class AbdmWebhookController extends Controller
      */
     public function handleConsentOnInit(Request $request): JsonResponse
     {
-        $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
-        Log::info("ABDM Webhook: Consent on-init callback received", ['payload' => $request->all()]);
+        $payload = $request->all();
+        Log::info("ABDM Webhook: Consent on-init callback received", ['payload' => $payload]);
 
-        return response()->json(['status' => 'acknowledged'], 200);
+        $consentReqId = $payload['consentRequest']['id'] ?? null;
+        if ($consentReqId) {
+            $consent = \App\Models\AbdmConsent::where('status', 'REQUESTED')->latest()->first()
+                ?: \App\Models\AbdmConsent::latest()->first();
+            if ($consent) {
+                $consent->update([
+                    'metadata' => array_merge($consent->metadata ?? [], [
+                        'gateway_consent_request_id' => $consentReqId,
+                        'on_init_at' => now()->toDateTimeString(),
+                        'on_init_payload' => $payload,
+                    ]),
+                ]);
+                Log::info("ABDM Webhook: Updated AbdmConsent record with gateway ID {$consentReqId}");
+            }
+        }
+
+        return response()->json(['status' => 'acknowledged'], 202);
     }
 
     /**
@@ -202,8 +218,50 @@ class AbdmWebhookController extends Controller
      */
     public function handleConsentOnStatus(Request $request): JsonResponse
     {
-        Log::info("ABDM Webhook: Consent on-status callback received", ['payload' => $request->all()]);
-        return response()->json(['status' => 'acknowledged'], 200);
+        $payload = $request->all();
+        Log::info("ABDM Webhook: Consent on-status callback received", ['payload' => $payload]);
+
+        $consentReq = $payload['consentRequest'] ?? [];
+        $reqId = $consentReq['id'] ?? null;
+        $status = strtoupper($consentReq['status'] ?? 'REQUESTED');
+        $consentArtefacts = $consentReq['consentArtefacts'] ?? [];
+
+        $consentId = null;
+        if (!empty($consentArtefacts)) {
+            $consentId = $consentArtefacts[0]['id'] ?? null;
+        }
+
+        if ($reqId) {
+            $consent = \App\Models\AbdmConsent::where('consent_request_id', $reqId)
+                ->orWhereJsonContains('metadata->gateway_consent_request_id', $reqId)
+                ->first()
+                ?: \App\Models\AbdmConsent::where('status', 'REQUESTED')->latest()->first()
+                ?: \App\Models\AbdmConsent::latest()->first();
+
+            if ($consent) {
+                $consent->update([
+                    'status' => $status,
+                    'consent_id' => $consentId ?: $consent->consent_id,
+                    'metadata' => array_merge($consent->metadata ?? [], [
+                        'gateway_consent_request_id' => $reqId,
+                        'on_status_payload' => $payload,
+                        'status_updated_at' => now()->toDateTimeString(),
+                    ]),
+                ]);
+
+                Log::info("ABDM Webhook: Updated consent status to {$status} for req {$reqId}");
+
+                if ($status === 'GRANTED' && $consentId) {
+                    try {
+                        $this->consentService->fetchConsentArtefact($consentId);
+                    } catch (\Throwable $e) {
+                        Log::warning("ABDM Consent Fetch error: " . $e->getMessage());
+                    }
+                }
+            }
+        }
+
+        return response()->json(['status' => 'acknowledged'], 202);
     }
 
     /**
@@ -212,8 +270,22 @@ class AbdmWebhookController extends Controller
      */
     public function handleConsentOnFetch(Request $request): JsonResponse
     {
-        Log::info("ABDM Webhook: Consent on-fetch callback received", ['payload' => $request->all()]);
-        return response()->json(['status' => 'acknowledged'], 200);
+        $payload = $request->all();
+        Log::info("ABDM Webhook: Consent on-fetch callback received", ['payload' => $payload]);
+
+        $artefact = $payload['consent']['consentDetail'] ?? $payload['consent'] ?? null;
+        if ($artefact) {
+            $consentId = $artefact['consentId'] ?? $payload['consent']['consentId'] ?? null;
+            $consent = \App\Models\AbdmConsent::where('consent_id', $consentId)->orWhere('status', 'GRANTED')->latest()->first();
+            if ($consent) {
+                $consent->update([
+                    'consent_artefact' => $artefact,
+                    'status' => 'GRANTED',
+                ]);
+            }
+        }
+
+        return response()->json(['status' => 'acknowledged'], 202);
     }
 
     /**
@@ -222,8 +294,26 @@ class AbdmWebhookController extends Controller
      */
     public function handleHealthInfoOnRequest(Request $request): JsonResponse
     {
-        Log::info("ABDM Webhook: Health Info on-request callback received", ['payload' => $request->all()]);
-        return response()->json(['status' => 'acknowledged'], 200);
+        $payload = $request->all();
+        Log::info("ABDM Webhook: Health Info on-request callback received", ['payload' => $payload]);
+
+        $txId = $payload['hiRequest']['transactionId'] ?? null;
+        if ($txId) {
+            $consent = \App\Models\AbdmConsent::where('status', 'GRANTED')->latest()->first();
+            if ($consent) {
+                $consent->update([
+                    'transaction_id' => $txId,
+                    'metadata' => array_merge($consent->metadata ?? [], [
+                        'transaction_id' => $txId,
+                        'data_request_status' => $payload['hiRequest']['sessionStatus'] ?? 'REQUESTED',
+                        'hi_on_request_payload' => $payload,
+                    ]),
+                ]);
+                Log::info("ABDM Webhook: Stored transactionId {$txId} on AbdmConsent");
+            }
+        }
+
+        return response()->json(['status' => 'acknowledged'], 202);
     }
 
     /**

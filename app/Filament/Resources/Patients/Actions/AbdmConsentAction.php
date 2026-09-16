@@ -11,6 +11,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
@@ -27,7 +28,7 @@ class AbdmConsentAction
             ->tooltip('ABDM Milestone 3: Request & View Patient Health Records from other Hospitals via ABHA Consent')
             ->modalHeading(fn (Patient $record): string => "ABDM External Health Records (HIU) - {$record->name} (UHID: {$record->id})")
             ->modalWidth('4xl')
-            ->modalSubmitActionLabel('Send Consent Request to Patient')
+            ->modalSubmitActionLabel('Submit')
             ->form(function (Patient $record): array {
                 if (!$record->isAbhaVerified()) {
                     return [
@@ -68,7 +69,9 @@ class AbdmConsentAction
                         $fromStr = $c->date_from ? $c->date_from->format('d-M-Y') : 'Past';
                         $toStr = $c->date_to ? $c->date_to->format('d-M-Y') : 'Present';
                         $createdStr = $c->created_at ? $c->created_at->format('d-M-Y H:i') : '';
-                        $consentIdStr = $c->consent_id ? "<span class='text-[11px] font-mono text-gray-600 dark:text-gray-400'>ID: {$c->consent_id}</span>" : "<span class='text-[11px] font-mono text-gray-400'>Req ID: " . substr($c->consent_request_id, 0, 13) . "...</span>";
+                        $gwId = $c->metadata['gateway_consent_request_id'] ?? null;
+                        $gwIdStr = $gwId ? "<div class='text-[10px] text-gray-500 font-mono'>Gateway ID: {$gwId}</div>" : '';
+                        $consentIdStr = $c->consent_id ? "<span class='text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-bold'>Artefact: {$c->consent_id}</span>" : "<span class='text-[11px] font-mono text-gray-400'>Req ID: " . substr($c->consent_request_id, 0, 13) . "...</span>";
 
                         // Transferred records count
                         $recordsInfo = '';
@@ -84,6 +87,7 @@ class AbdmConsentAction
                                         <span class='px-2 py-0.5 rounded text-[10px] font-bold {$badgeColor}'>{$c->status}</span>
                                         {$consentIdStr}
                                     </div>
+                                    {$gwIdStr}
                                     <div class='text-gray-700 dark:text-gray-300'><strong>Types:</strong> {$hiTypesStr}</div>
                                     <div class='text-gray-500 text-[11px]'>Range: {$fromStr} to {$toStr} • Purpose: {$c->purpose_code}</div>
                                     {$recordsInfo}
@@ -105,14 +109,63 @@ class AbdmConsentAction
                                 ->content(new HtmlString($historyHtml)),
                         ]),
 
+                    Radio::make('operation')
+                        ->label('Select Action')
+                        ->options([
+                            'status' => '1. Check / Sync Approval Status from ABDM Gateway',
+                            'fetch' => '2. Fetch Medical Records (Data Flow for Granted Consent)',
+                            'new' => '3. Send New Consent Request',
+                        ])
+                        ->default(function () use ($pastConsents) {
+                            $latest = $pastConsents->first();
+                            if ($latest && $latest->status === 'GRANTED') {
+                                return 'fetch';
+                            }
+                            if ($latest && $latest->status === 'REQUESTED') {
+                                return 'status';
+                            }
+                            return 'new';
+                        })
+                        ->live(),
+
+                    Section::make('Sync Consent Approval from ABDM Gateway')
+                        ->description('Query the ABDM Gateway to verify if the patient approved the consent on their ABHA app.')
+                        ->visible(fn ($get) => $get('operation') === 'status')
+                        ->schema([
+                            TextInput::make('gateway_consent_request_id')
+                                ->label('ABDM Gateway Consent Request ID')
+                                ->default(function () use ($pastConsents) {
+                                    $latest = $pastConsents->first();
+                                    return $latest?->metadata['gateway_consent_request_id']
+                                        ?? '546ce531-0c3f-412b-8c2f-18ad1a3882f2';
+                                })
+                                ->helperText('Gateway Consent Request ID received from ABDM.')
+                                ->required(fn ($get) => $get('operation') === 'status'),
+                        ]),
+
+                    Section::make('Fetch Medical Records (Data Flow)')
+                        ->description('Request clinical records (FHIR bundles) using the approved Consent Artefact.')
+                        ->visible(fn ($get) => $get('operation') === 'fetch')
+                        ->schema([
+                            TextInput::make('consent_artefact_id')
+                                ->label('Granted Consent Artefact ID')
+                                ->default(function () use ($pastConsents) {
+                                    $granted = $pastConsents->firstWhere('status', 'GRANTED') ?: $pastConsents->first();
+                                    return $granted?->consent_id;
+                                })
+                                ->helperText('Artefact ID received upon patient approval.')
+                                ->required(fn ($get) => $get('operation') === 'fetch'),
+                        ]),
+
                     Section::make('Initiate New Consent Request (M3 HIU)')
                         ->description('Request patient permission via their ABHA app to fetch past prescriptions, lab tests, and hospital discharge summaries.')
+                        ->visible(fn ($get) => $get('operation') === 'new')
                         ->schema([
                             Grid::make(3)->schema([
                                 TextInput::make('doctor_name')
                                     ->label('Requesting Doctor')
                                     ->default('Dr. Vineet Gour')
-                                    ->required(),
+                                    ->required(fn ($get) => $get('operation') === 'new'),
 
                                 Select::make('purpose')
                                     ->label('Purpose of Request')
@@ -123,7 +176,7 @@ class AbdmConsentAction
                                         'RESCH' => 'Medical Research',
                                     ])
                                     ->default('CAREMGT')
-                                    ->required(),
+                                    ->required(fn ($get) => $get('operation') === 'new'),
 
                                 Select::make('hip_mode')
                                     ->label('Target Facility (Records Provider)')
@@ -133,7 +186,7 @@ class AbdmConsentAction
                                     ])
                                     ->default('NETRIKA')
                                     ->helperText('Select Netrika Netralaya for self-contained testing.')
-                                    ->required(),
+                                    ->required(fn ($get) => $get('operation') === 'new'),
                             ]),
 
                             CheckboxList::make('hi_types')
@@ -148,24 +201,24 @@ class AbdmConsentAction
                                 ])
                                 ->default(['OPConsultation'])
                                 ->columns(2)
-                                ->required(),
+                                ->required(fn ($get) => $get('operation') === 'new'),
 
                             Grid::make(3)->schema([
                                 DatePicker::make('date_from')
                                     ->label('Records From')
                                     ->default(now()->subYears(2)->format('Y-m-d'))
-                                    ->required(),
+                                    ->required(fn ($get) => $get('operation') === 'new'),
 
                                 DatePicker::make('date_to')
                                     ->label('Records To')
                                     ->default(now()->format('Y-m-d'))
-                                    ->required(),
+                                    ->required(fn ($get) => $get('operation') === 'new'),
 
                                 DatePicker::make('data_erase_at')
                                     ->label('Access Expiry (Erase At)')
                                     ->default(now()->addMonths(1)->format('Y-m-d'))
                                     ->helperText('Access will automatically revoke after this date.')
-                                    ->required(),
+                                    ->required(fn ($get) => $get('operation') === 'new'),
                             ]),
                         ]),
                 ];
@@ -175,6 +228,62 @@ class AbdmConsentAction
                     return;
                 }
 
+                $op = $data['operation'] ?? 'status';
+                $latest = $record->consents()->latest()->first();
+
+                // 1. Check Status
+                if ($op === 'status') {
+                    if (!$latest) {
+                        Notification::make()->title('No consent requests found')->warning()->send();
+                        return;
+                    }
+                    try {
+                        $reqId = !empty($data['gateway_consent_request_id'])
+                            ? trim($data['gateway_consent_request_id'])
+                            : ($latest->metadata['gateway_consent_request_id'] ?? $latest->consent_request_id);
+
+                        $res = $consentService->getConsentStatus($reqId);
+                        $latest->refresh();
+                        $status = $latest->status;
+                        Notification::make()
+                            ->title("Consent Status: {$status}")
+                            ->body($status === 'GRANTED'
+                                ? "Consent GRANTED by Patient! Artefact ID: {$latest->consent_id}. You can now select 'Fetch Medical Records'."
+                                : "Gateway reports status: {$status} (Request ID: {$reqId}). If recently approved in PHR app, give it a few seconds and check again.")
+                            ->success()
+                            ->duration(8000)
+                            ->send();
+                    } catch (\Throwable $e) {
+                        Notification::make()->title('Failed to check status')->body($e->getMessage())->danger()->send();
+                    }
+                    return;
+                }
+
+                // 2. Fetch Health Records
+                if ($op === 'fetch') {
+                    $granted = $record->consents()->where('status', 'GRANTED')->latest()->first() ?: $latest;
+                    if (!empty($data['consent_artefact_id']) && $granted) {
+                        $granted->update(['consent_id' => trim($data['consent_artefact_id'])]);
+                    }
+                    if (!$granted || empty($granted->consent_id)) {
+                        Notification::make()->title('Consent has not yet been GRANTED or consent ID is missing')->warning()->send();
+                        return;
+                    }
+                    try {
+                        $res = $consentService->requestHealthInformation($granted);
+                        Notification::make()
+                            ->title('Health Information Request Dispatched!')
+                            ->body('Requested encrypted clinical records from facility. Data flow is in progress.')
+                            ->success()
+                            ->duration(8000)
+                            ->send();
+                    } catch (\Throwable $e) {
+                        Notification::make()->title('Failed to dispatch data request')->body($e->getMessage())->danger()->send();
+                    }
+                    return;
+                }
+
+                // 3. New Consent Request
                 $abhaId = $record->abha_address ?: $record->abha_number;
                 if (empty($abhaId)) {
                     Notification::make()

@@ -22,10 +22,14 @@ Route::prefix('v3/hip')->group(function () {
 // v3 HIU Endpoints (Milestone 3 - Consent Management & Health Data Flow)
 Route::prefix('v3/hiu')->group(function () {
     Route::post('/consent/request/on-init', [AbdmWebhookController::class, 'handleConsentOnInit']);
+    Route::post('/consent/on-init', [AbdmWebhookController::class, 'handleConsentOnInit']);
     Route::post('/consent/request/on-status', [AbdmWebhookController::class, 'handleConsentOnStatus']);
+    Route::post('/consent/on-status', [AbdmWebhookController::class, 'handleConsentOnStatus']);
     Route::post('/consent/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+    Route::post('/consent/request/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
     Route::post('/consent/request/hiu/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
     Route::post('/consent/on-fetch', [AbdmWebhookController::class, 'handleConsentOnFetch']);
+    Route::post('/consent/request/on-fetch', [AbdmWebhookController::class, 'handleConsentOnFetch']);
     Route::post('/health-information/on-request', [AbdmWebhookController::class, 'handleHealthInfoOnRequest']);
     Route::post('/data/notification', [AbdmWebhookController::class, 'handleDataNotification']);
 });
