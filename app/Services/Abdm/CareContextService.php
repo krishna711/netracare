@@ -400,7 +400,7 @@ class CareContextService
             ];
         }
 
-        // 3. Build V3 response object
+        // 3. Build V3 response object strictly according to ABDM V3 spec (no root matchedBy, no root resp)
         $responsePayload = [
             'requestId' => (string) Str::uuid(),
             'timestamp' => $this->client->getIsoTimestamp(),
@@ -410,10 +410,6 @@ class CareContextService
                 'display' => $this->sanitizeAscii($patient->name),
                 'careContexts' => $careContexts,
                 'matchedBy' => $mobile ? ['MOBILE'] : ['MR'],
-            ],
-            'matchedBy' => $mobile ? ['MOBILE'] : ['MR'],
-            'resp' => [
-                'requestId' => $requestId,
             ],
         ];
 

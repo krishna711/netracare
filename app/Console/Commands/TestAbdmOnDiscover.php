@@ -81,6 +81,26 @@ class TestAbdmOnDiscover extends Command
             'TIMESTAMP' => $client->getIsoTimestamp(),
         ];
 
+        // Test 0: Test local handleDiscover synchronous output
+        $this->info("\n--- Test 0: Local V3 Synchronous Discovery Handler Output ---");
+        $mockInboundPayload = [
+            'transactionId' => $txId,
+            'patient' => [
+                'id' => '91734576332054@sbx',
+                'verifiedIdentifiers' => [
+                    ['type' => 'MOBILE', 'value' => '9893990441'],
+                ],
+                'name' => 'Balkrishna Verma',
+            ],
+        ];
+        try {
+            $syncOutput = $careContextService->handleDiscover($mockInboundPayload, $inboundReqId);
+            $this->line("Synchronous Response Body to Gateway:");
+            $this->line(json_encode($syncOutput, JSON_PRETTY_PRINT));
+        } catch (\Throwable $e) {
+            $this->warn("Local handleDiscover error: " . $e->getMessage());
+        }
+
         // Test 1: V3 with resp block
         $this->info("\n--- Test 1: V3 on-discover WITH resp block ---");
         $this->line("URL: {$v3Url}");

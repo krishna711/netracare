@@ -77,25 +77,16 @@ class AbdmWebhookController extends Controller
         try {
             $result = $this->careContextService->handleDiscover($payload, $requestId);
 
-            $response = response()->json($result, 200, [
+            return response()->json($result, 200, [
                 'Content-Type' => 'application/json',
                 'REQUEST-ID' => $requestId,
+                'TIMESTAMP' => (new \DateTime('now', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.000\Z'),
             ]);
-
-            // Flush response to ABDM Gateway immediately so connection never hangs
-            if (function_exists('fastcgi_finish_request')) {
-                $response->send();
-                fastcgi_finish_request();
-            }
-
-            // Dispatch outbound on-discover callback (now running in background without delaying gateway response)
-            $this->careContextService->dispatchOnDiscover($result, $requestId);
-
-            return $response;
         } catch (\Throwable $e) {
             Log::error("ABDM Discovery Webhook Error: " . $e->getMessage());
 
             return response()->json([
+                'transactionId' => $payload['transactionId'] ?? null,
                 'error' => [
                     'code' => 2500,
                     'message' => $e->getMessage(),
