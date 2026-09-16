@@ -26,6 +26,36 @@ class AbdmPatientAction
             ->modalHeading(fn (Patient $record): string => "ABDM / ABHA Identity - {$record->name} (UHID: {$record->id})")
             ->modalWidth('3xl')
             ->modalSubmitActionLabel(fn (Patient $record): string => $record->isAbhaVerified() ? 'Close' : 'Complete & Save')
+            ->extraModalActions([
+                Action::make('unlinkAbha')
+                    ->label('Unlink / Reset ABHA (Switch to Production)')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('danger')
+                    ->visible(fn (Patient $record): bool => $record->isAbhaVerified())
+                    ->requiresConfirmation()
+                    ->modalHeading('Unlink & Reset ABHA Identity')
+                    ->modalDescription('Are you sure you want to unlink the ABHA identity for this patient? This will clear the test ABHA number, address, and sandbox care context links so you can link a real production ABHA. Clinical records and appointments will NOT be deleted.')
+                    ->modalSubmitActionLabel('Yes, Reset ABHA')
+                    ->action(function (Patient $record) {
+                        $record->update([
+                            'abha_number' => null,
+                            'abha_address' => null,
+                            'abdm_status' => 'unverified',
+                            'abdm_profile' => null,
+                            'abdm_verified_at' => null,
+                        ]);
+
+                        // Clean up sandbox bridge links
+                        $record->careContexts()->delete();
+                        $record->consents()->delete();
+
+                        Notification::make()
+                            ->title('ABHA Unlinked Successfully')
+                            ->body("Sandbox ABHA cleared for {$record->name}. You can now create or verify a real production ABHA.")
+                            ->success()
+                            ->send();
+                    }),
+            ])
             ->form(function (Patient $record): array {
                 if ($record->isAbhaVerified()) {
                     $contexts = $record->careContexts()->latest()->get();

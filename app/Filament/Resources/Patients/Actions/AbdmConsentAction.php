@@ -30,6 +30,25 @@ class AbdmConsentAction
             ->modalWidth('7xl')
             ->extraModalWindowAttributes(['style' => 'width: 80vw !important; max-width: 80vw !important;'])
             ->modalSubmitActionLabel('Submit')
+            ->extraModalActions([
+                Action::make('purgeTestConsents')
+                    ->label('Clear Consent History')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->visible(fn (Patient $record): bool => $record->consents()->exists())
+                    ->requiresConfirmation()
+                    ->modalHeading('Purge Sandbox Consent Requests')
+                    ->modalDescription('Clear sandbox test consent requests and transferred records for this patient? This will reset the history to clean state for production.')
+                    ->modalSubmitActionLabel('Yes, Clear History')
+                    ->action(function (Patient $record) {
+                        $record->consents()->delete();
+                        Notification::make()
+                            ->title('Consent History Cleared')
+                            ->body('All test consent records and transferred data have been removed for this patient.')
+                            ->success()
+                            ->send();
+                    }),
+            ])
             ->form(function (Patient $record): array {
                 if (!$record->isAbhaVerified()) {
                     return [
