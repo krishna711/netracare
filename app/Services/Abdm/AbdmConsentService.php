@@ -31,15 +31,10 @@ class AbdmConsentService
             throw new Exception("Patient does not have a linked ABHA address or ABHA number.");
         }
 
-        $hiuId = !empty($options['hiu_id']) ? $options['hiu_id'] : ($this->client->getClientId() ?: 'SBXID_075083');
+        $hiuId = !empty($options['hiu_id']) ? $options['hiu_id'] : ($this->client->getHipId() ?: 'IN2310001444');
         $doctorName = $options['doctor_name'] ?? 'Dr. Vineet Gour';
         $purpose = $options['purpose'] ?? 'CAREMGT';
-        $hiTypes = $options['hi_types'] ?? [
-            'Prescription',
-            'DiagnosticReport',
-            'OPConsultation',
-            'DischargeSummary',
-        ];
+        $hiTypes = $options['hi_types'] ?? ['OPConsultation'];
 
         $from = $this->formatAbdmDate($options['date_from'] ?? now()->subYears(3));
         $rawTo = $options['date_to'] ?? now();
@@ -50,6 +45,34 @@ class AbdmConsentService
         $eraseAt = $this->formatAbdmDate($options['data_erase_at'] ?? now()->addMonths(1));
 
         $consentRequestId = (string) Str::uuid();
+
+        // Build target HIP and care contexts if specific facility requested
+        $hip = null;
+        $careContexts = null;
+        if (!empty($options['hip_id'])) {
+            $hip = ['id' => $options['hip_id']];
+            if (!empty($options['care_contexts'])) {
+                $careContexts = $options['care_contexts'];
+            } else {
+                $contexts = $patient->careContexts()->get();
+                if ($contexts->isNotEmpty()) {
+                    $careContexts = [];
+                    foreach ($contexts as $cc) {
+                        $careContexts[] = [
+                            'patientReference' => "P-{$patient->id}",
+                            'careContextReference' => $cc->care_context_reference,
+                        ];
+                    }
+                } else {
+                    $careContexts = [
+                        [
+                            'patientReference' => "P-{$patient->id}",
+                            'careContextReference' => 'OPD-APP-42778',
+                        ],
+                    ];
+                }
+            }
+        }
 
         $payload = [
             'consent' => [
@@ -64,8 +87,8 @@ class AbdmConsentService
                 'hiu' => [
                     'id' => $hiuId,
                 ],
-                'hip' => !empty($options['hip_id']) ? ['id' => $options['hip_id']] : null,
-                'careContexts' => !empty($options['care_contexts']) ? $options['care_contexts'] : null,
+                'hip' => $hip,
+                'careContexts' => $careContexts,
                 'requester' => [
                     'name' => $doctorName,
                     'identifier' => [
@@ -141,7 +164,7 @@ class AbdmConsentService
      */
     public function getConsentStatus(string $consentRequestId): array
     {
-        $hiuId = $this->client->getClientId() ?: 'SBXID_075083';
+        $hiuId = $this->client->getHipId() ?: 'IN2310001444';
         $url = "{$this->client->getGatewayBaseUrl()}/consent/v3/request/status";
 
         $headers = [
@@ -252,7 +275,7 @@ class AbdmConsentService
      */
     public function fetchConsentArtefact(string $consentId): array
     {
-        $hiuId = $this->client->getClientId() ?: 'SBXID_075083';
+        $hiuId = $this->client->getHipId() ?: 'IN2310001444';
         $url = "{$this->client->getGatewayBaseUrl()}/consent/v3/fetch";
 
         $headers = [
@@ -287,7 +310,7 @@ class AbdmConsentService
             throw new Exception("Consent has not been granted or consentId is missing.");
         }
 
-        $hiuId = $this->client->getClientId() ?: 'SBXID_075083';
+        $hiuId = $this->client->getHipId() ?: 'IN2310001444';
         $dataPushUrl = config('abdm.public_callback_url', url('/')) . '/api/v3/hiu/data/notification';
 
         // Generate Ephemeral Diffie-Hellman (Curve25519) key material
@@ -382,7 +405,7 @@ class AbdmConsentService
      */
     public function dispatchDataFlowNotify(AbdmConsent $consent, string $transactionId): void
     {
-        $hiuId = $this->client->getClientId() ?: 'SBXID_075083';
+        $hiuId = $this->client->getHipId() ?: 'IN2310001444';
         $url = "{$this->client->getGatewayBaseUrl()}/data-flow/v3/health-information/notify";
 
         $payload = [
