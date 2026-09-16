@@ -68,18 +68,30 @@ class AbdmWebhookController extends Controller
         $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
         $payload = $request->all();
 
-        Log::info("ABDM Webhook: Incoming patient care context discovery", [
+        Log::info("ABDM Webhook: Incoming patient care context discovery [{$request->method()} {$request->fullUrl()}]", [
             'requestId' => $requestId,
+            'headers' => $request->headers->all(),
             'payload' => $payload,
         ]);
 
         try {
             $result = $this->careContextService->handleDiscover($payload, $requestId);
 
-            return response()->json($result, 200, [
+            $response = response()->json($result, 200, [
                 'Content-Type' => 'application/json',
                 'REQUEST-ID' => $requestId,
             ]);
+
+            // Flush response to ABDM Gateway immediately so connection never hangs
+            if (function_exists('fastcgi_finish_request')) {
+                $response->send();
+                fastcgi_finish_request();
+            }
+
+            // Dispatch outbound on-discover callback (now running in background without delaying gateway response)
+            $this->careContextService->dispatchOnDiscover($result, $requestId);
+
+            return $response;
         } catch (\Throwable $e) {
             Log::error("ABDM Discovery Webhook Error: " . $e->getMessage());
 
