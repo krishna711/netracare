@@ -34,9 +34,16 @@ class CareContextService
             ? Carbon::parse($appointment->appointment_time)->format('d M Y') 
             : Carbon::now()->format('d M Y');
 
-        $doctorStr = $appointment->doctor ? " with Dr. {$appointment->doctor->name}" : "";
+        $doctorName = $appointment->doctor ? trim($appointment->doctor->name) : '';
+        if ($doctorName) {
+            $doctorName = preg_replace('/^Dr\.?\s*/i', '', $doctorName);
+            $doctorStr = " with Dr. {$doctorName}";
+        } else {
+            $doctorStr = '';
+        }
+
         $ref = "OPD-APP-{$appointment->id}";
-        $display = "Ophthalmology Consultation — {$dateStr}{$doctorStr}";
+        $display = $this->sanitizeAscii("Ophthalmology Consultation - {$dateStr}{$doctorStr}");
 
         return AbdmCareContext::firstOrCreate(
             ['care_context_reference' => $ref],
@@ -66,7 +73,7 @@ class CareContextService
             : Carbon::now()->format('d M Y');
 
         $ref = "OPD-CONS-{$consultation->id}";
-        $display = "Eye Clinical Consultation — {$dateStr}";
+        $display = $this->sanitizeAscii("Eye Clinical Consultation - {$dateStr}");
 
         return AbdmCareContext::firstOrCreate(
             ['care_context_reference' => $ref],
@@ -392,7 +399,7 @@ class CareContextService
             $cc = $this->createOrGetForAppointment($apt);
             $careContexts[] = [
                 'referenceNumber' => $cc->care_context_reference,
-                'display' => $cc->display_name,
+                'display' => $this->sanitizeAscii($cc->display_name),
             ];
         }
 
@@ -401,34 +408,28 @@ class CareContextService
             $ref = "OPD-PAT-{$patient->id}";
             $careContexts[] = [
                 'referenceNumber' => $ref,
-                'display' => "Ophthalmology Consultation — Netrika Netralaya",
+                'display' => $this->sanitizeAscii("Ophthalmology Consultation - Netrika Netralaya"),
             ];
         }
 
-        // 3. Send on-discover callback to ABDM Gateway
+        // 3. Build V3 response object
         $responsePayload = [
             'requestId' => (string) Str::uuid(),
             'timestamp' => $this->client->getIsoTimestamp(),
             'transactionId' => $txId,
             'patient' => [
                 'referenceNumber' => "P-{$patient->id}",
-                'display' => $patient->name,
+                'display' => $this->sanitizeAscii($patient->name),
                 'careContexts' => $careContexts,
                 'matchedBy' => $mobile ? ['MOBILE'] : ['MR'],
             ],
         ];
 
+        // Dispatch async on-discover callback for gateways supporting async pattern
         $this->dispatchOnDiscover($responsePayload, $requestId);
 
-        return [
-            'transactionId' => $txId,
-            'patient' => [
-                'referenceNumber' => "P-{$patient->id}",
-                'display' => $patient->name,
-                'careContexts' => $careContexts,
-                'matchedBy' => $mobile ? ['MOBILE'] : ['MR'],
-            ],
-        ];
+        // Return full discovery payload for V3 synchronous discovery response
+        return $responsePayload;
     }
 
     /**
@@ -442,10 +443,11 @@ class CareContextService
         Log::info("ABDM Discovery: Sending V3 on-discover to {$v3Url}", ['payload' => $payload]);
 
         try {
-            $res = $this->client->sendRequest('POST', $v3Url, $payload);
+            $res = $this->client->sendGatewayV3Callback($v3Url, $payload);
             Log::info("ABDM Discovery: V3 on-discover status: {$res->status()}", [
                 'body' => $res->body(),
                 'json' => $res->json(),
+                'headers' => $res->headers(),
             ]);
         } catch (\Throwable $e) {
             Log::warning("ABDM Discovery: V3 on-discover exception: " . $e->getMessage());
@@ -457,7 +459,7 @@ class CareContextService
                     'resp' => ['requestId' => $requestId],
                 ]);
 
-                $res05 = Http::timeout(15)->withHeaders([
+                $res05 = Http::timeout(10)->withHeaders([
                     'Authorization' => 'Bearer ' . $v05Token,
                     'Content-Type' => 'application/json',
                     'X-CM-ID' => $this->client->getCmId(),
@@ -505,8 +507,11 @@ class CareContextService
         ];
 
         try {
-            $res = $this->client->sendRequest('POST', $v3OnInitUrl, $onInitPayload);
-            Log::info("ABDM Link Init: V3 on-init status: {$res->status()}", ['body' => $res->body()]);
+            $res = $this->client->sendGatewayV3Callback($v3OnInitUrl, $onInitPayload);
+            Log::info("ABDM Link Init: V3 on-init status: {$res->status()}", [
+                'body' => $res->body(),
+                'headers' => $res->headers(),
+            ]);
         } catch (\Throwable $e) {
             Log::warning("ABDM Link Init: on-init failed: " . $e->getMessage());
         }
@@ -533,7 +538,7 @@ class CareContextService
             'careContexts' => [
                 [
                     'referenceNumber' => 'OPD-APP-42778',
-                    'display' => 'Ophthalmology Consultation — Netrika Netralaya',
+                    'display' => $this->sanitizeAscii('Ophthalmology Consultation - Netrika Netralaya'),
                 ],
             ],
         ];
@@ -547,8 +552,11 @@ class CareContextService
         ];
 
         try {
-            $res = $this->client->sendRequest('POST', $v3OnConfirmUrl, $onConfirmPayload);
-            Log::info("ABDM Link Confirm: V3 on-confirm status: {$res->status()}", ['body' => $res->body()]);
+            $res = $this->client->sendGatewayV3Callback($v3OnConfirmUrl, $onConfirmPayload);
+            Log::info("ABDM Link Confirm: V3 on-confirm status: {$res->status()}", [
+                'body' => $res->body(),
+                'headers' => $res->headers(),
+            ]);
         } catch (\Throwable $e) {
             Log::warning("ABDM Link Confirm: on-confirm failed: " . $e->getMessage());
         }
@@ -556,5 +564,28 @@ class CareContextService
         return [
             'patient' => $confirmBlock,
         ];
+    }
+
+    /**
+     * Sanitize string to clean ASCII text for ABDM V3 schema compliance.
+     */
+    public function sanitizeAscii(?string $text): string
+    {
+        if (empty($text)) {
+            return '';
+        }
+
+        // Replace unicode dashes with regular ASCII hyphen
+        $text = str_replace(["\u{2014}", "\u{2013}", "—", "–", "−"], '-', $text);
+        // Replace non-breaking spaces
+        $text = str_replace(["\u{00A0}", "\u{200B}"], ' ', $text);
+        // Normalize repeated "Dr. Dr. ..." down to single "Dr. "
+        $text = preg_replace('/(\bDr\.?\s*)+/i', 'Dr. ', $text);
+        // Strip any characters outside basic printable ASCII
+        $text = preg_replace('/[^\x20-\x7E]/', '', $text);
+        // Collapse multiple spaces
+        $text = preg_replace('/\s+/', ' ', $text);
+
+        return trim($text);
     }
 }

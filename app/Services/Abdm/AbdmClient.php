@@ -439,6 +439,37 @@ class AbdmClient
     }
 
     /**
+     * Send outbound V3 callback to ABDM Gateway with exact standard headers (Bearer, Content-Type, X-CM-ID).
+     *
+     * @param string $url
+     * @param array $payload
+     * @return Response
+     * @throws Exception
+     */
+    public function sendGatewayV3Callback(string $url, array $payload): Response
+    {
+        $accessToken = $this->getSessionToken();
+
+        $response = Http::timeout(15)->withHeaders([
+            'Authorization' => 'Bearer ' . $accessToken,
+            'Content-Type' => 'application/json',
+            'X-CM-ID' => $this->cmId,
+        ])->post($url, $payload);
+
+        if ($response->status() === 401) {
+            Log::warning("ABDM Callback 401: Refreshing session token and retrying...");
+            $freshToken = $this->getSessionToken(true);
+            $response = Http::timeout(15)->withHeaders([
+                'Authorization' => 'Bearer ' . $freshToken,
+                'Content-Type' => 'application/json',
+                'X-CM-ID' => $this->cmId,
+            ])->post($url, $payload);
+        }
+
+        return $response;
+    }
+
+    /**
      * Perform live test connection to check credentials & certificate retrieval.
      */
     public function testConnection(): array
