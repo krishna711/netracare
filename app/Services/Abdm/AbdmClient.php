@@ -450,20 +450,21 @@ class AbdmClient
     {
         $accessToken = $this->getSessionToken();
 
-        $response = Http::timeout(15)->withHeaders([
+        $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
             'X-CM-ID' => $this->cmId,
-        ])->post($url, $payload);
+            'REQUEST-ID' => (string) Str::uuid(),
+            'TIMESTAMP' => $this->getIsoTimestamp(),
+        ];
+
+        $response = Http::timeout(15)->withHeaders($headers)->post($url, $payload);
 
         if ($response->status() === 401) {
             Log::warning("ABDM Callback 401: Refreshing session token and retrying...");
             $freshToken = $this->getSessionToken(true);
-            $response = Http::timeout(15)->withHeaders([
-                'Authorization' => 'Bearer ' . $freshToken,
-                'Content-Type' => 'application/json',
-                'X-CM-ID' => $this->cmId,
-            ])->post($url, $payload);
+            $headers['Authorization'] = 'Bearer ' . $freshToken;
+            $response = Http::timeout(15)->withHeaders($headers)->post($url, $payload);
         }
 
         return $response;

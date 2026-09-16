@@ -360,28 +360,16 @@ class CareContextService
 
         $txId = $payload['transactionId'] ?? (string) Str::uuid();
 
-        // 1. If patient NOT found: send on-discover error response so PHR app does not time out!
+        // 1. If patient NOT found: return error object inline
         if (!$patient) {
             Log::warning("ABDM Discovery: Patient not found for mobile={$mobile}, abha={$abhaAddress}, name={$name}");
 
-            $errResponse = [
-                'requestId' => (string) Str::uuid(),
-                'timestamp' => now()->toISOString(),
+            return [
                 'transactionId' => $txId,
                 'error' => [
                     'code' => 2500,
-                    'message' => 'No patient record found matching the demographic details.',
+                    'message' => 'No matching patient records found in NetraCare.',
                 ],
-                'resp' => [
-                    'requestId' => $requestId,
-                ],
-            ];
-
-            $this->dispatchOnDiscover($errResponse);
-
-            return [
-                'status' => 'NOT_FOUND',
-                'message' => 'No matching patient records found in NetraCare.',
             ];
         }
 
@@ -412,7 +400,7 @@ class CareContextService
             ];
         }
 
-        // 3. Build V3 response object
+        // 3. Build V3 response object (ABDM V3 Discovery is strictly synchronous)
         $responsePayload = [
             'requestId' => (string) Str::uuid(),
             'timestamp' => $this->client->getIsoTimestamp(),
@@ -423,12 +411,15 @@ class CareContextService
                 'careContexts' => $careContexts,
                 'matchedBy' => $mobile ? ['MOBILE'] : ['MR'],
             ],
+            'matchedBy' => $mobile ? ['MOBILE'] : ['MR'],
         ];
 
-        // Dispatch async on-discover callback for gateways supporting async pattern
-        $this->dispatchOnDiscover($responsePayload, $requestId);
+        Log::info("ABDM Discovery: Returning synchronous V3 response inline", [
+            'transactionId' => $txId,
+            'patientRef' => "P-{$patient->id}",
+            'careContextsCount' => count($careContexts),
+        ]);
 
-        // Return full discovery payload for V3 synchronous discovery response
         return $responsePayload;
     }
 

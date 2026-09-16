@@ -76,7 +76,10 @@ class AbdmWebhookController extends Controller
         try {
             $result = $this->careContextService->handleDiscover($payload, $requestId);
 
-            return response()->json($result, 200);
+            return response()->json($result, 200, [
+                'Content-Type' => 'application/json',
+                'REQUEST-ID' => $requestId,
+            ]);
         } catch (\Throwable $e) {
             Log::error("ABDM Discovery Webhook Error: " . $e->getMessage());
 
@@ -85,7 +88,10 @@ class AbdmWebhookController extends Controller
                     'code' => 2500,
                     'message' => $e->getMessage(),
                 ],
-            ], 200);
+            ], 200, [
+                'Content-Type' => 'application/json',
+                'REQUEST-ID' => $requestId,
+            ]);
         }
     }
 
