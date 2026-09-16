@@ -137,7 +137,7 @@ class AbdmBridgeService
             ],
         ];
 
-        // Candidate Payload: Q17 HRP Object Format
+        // Candidate Payload: Q17 HRP Object Format (both HIP and HIU)
         $hrpPayload = [
             'facilityId' => $hipId,
             'facilityName' => $facilityName,
@@ -146,6 +146,12 @@ class AbdmBridgeService
                     'bridgeId' => $this->client->getClientId(),
                     'hipName' => $facilityName,
                     'type' => 'HIP',
+                    'active' => true,
+                ],
+                [
+                    'bridgeId' => $this->client->getClientId(),
+                    'hipName' => $facilityName,
+                    'type' => 'HIU',
                     'active' => true,
                 ],
             ],

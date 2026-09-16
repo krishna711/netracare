@@ -230,12 +230,12 @@ class AbdmSettings extends Page implements HasForms
                 }),
 
             Action::make('registerHip')
-                ->label('2. Register HIP Service')
+                ->label('2. Register HIP & HIU Services')
                 ->icon('heroicon-o-building-office-2')
                 ->color('success')
                 ->requiresConfirmation()
-                ->modalHeading('Register Facility HIP Service (NHA Step 2)')
-                ->modalDescription('This adds Netrika Netralaya as an active HIP (Health Information Provider) in the ABDM Mock Facility Registry.')
+                ->modalHeading('Register Facility HIP & HIU Services (Milestones 2 & 3)')
+                ->modalDescription('This registers Netrika Netralaya as both an active HIP (Health Information Provider) and HIU (Health Information User) in the ABDM Facility Registry.')
                 ->action(function (AbdmBridgeService $bridgeService, AbdmClient $client) {
                     try {
                         $this->save();
@@ -243,8 +243,8 @@ class AbdmSettings extends Page implements HasForms
 
                         $res = $bridgeService->addUpdateServices();
                         Notification::make()
-                            ->title('HIP Service Registered!')
-                            ->body($res['message'] ?? 'Successfully registered in registry.')
+                            ->title('HIP & HIU Services Registered!')
+                            ->body($res['message'] ?? 'Successfully registered both HIP and HIU roles in registry.')
                             ->success()
                             ->send();
                     } catch (\Throwable $e) {

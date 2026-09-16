@@ -54,4 +54,9 @@ class Patient extends Model
     {
         return $this->hasMany(AbdmCareContext::class);
     }
+
+    public function consents()
+    {
+        return $this->hasMany(AbdmConsent::class);
+    }
 }

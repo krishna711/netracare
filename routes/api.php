@@ -19,6 +19,17 @@ Route::prefix('v3/hip')->group(function () {
     Route::post('/consent/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
 });
 
+// v3 HIU Endpoints (Milestone 3 - Consent Management & Health Data Flow)
+Route::prefix('v3/hiu')->group(function () {
+    Route::post('/consent/request/on-init', [AbdmWebhookController::class, 'handleConsentOnInit']);
+    Route::post('/consent/request/on-status', [AbdmWebhookController::class, 'handleConsentOnStatus']);
+    Route::post('/consent/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+    Route::post('/consent/request/hiu/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+    Route::post('/consent/on-fetch', [AbdmWebhookController::class, 'handleConsentOnFetch']);
+    Route::post('/health-information/on-request', [AbdmWebhookController::class, 'handleHealthInfoOnRequest']);
+    Route::post('/data/notification', [AbdmWebhookController::class, 'handleDataNotification']);
+});
+
 // v0.5 Legacy endpoints (called by PHR / Gateway in v0.5 mode)
 Route::prefix('v0.5')->group(function () {
     Route::post('/care-contexts/discover', [AbdmWebhookController::class, 'handleCareContextDiscover']);

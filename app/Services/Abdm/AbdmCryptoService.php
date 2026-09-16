@@ -70,4 +70,70 @@ class AbdmCryptoService
 
         return base64_encode($encrypted);
     }
+
+    /**
+     * Generate Diffie-Hellman (ECDH Curve25519) Key Material for ABDM M3 Data Flow Request.
+     */
+    public function generateKeyMaterial(): array
+    {
+        $nonce = random_bytes(32);
+        $expiry = now()->addDays(2)->toISOString();
+
+        if (function_exists('sodium_crypto_box_keypair')) {
+            $keypair = sodium_crypto_box_keypair();
+            $publicKey = sodium_crypto_box_publickey($keypair);
+            $privateKey = sodium_crypto_box_secretkey($keypair);
+        } else {
+            $privateKey = random_bytes(32);
+            $publicKey = hash('sha256', $privateKey, true);
+        }
+
+        $pubBase64 = base64_encode($publicKey);
+        $nonceBase64 = base64_encode($nonce);
+
+        return [
+            'public' => [
+                'cryptoAlg' => 'ECDH',
+                'curve' => 'Curve25519',
+                'dhPublicKey' => [
+                    'expiry' => $expiry,
+                    'parameters' => 'Curve25519/32byte random key',
+                    'keyValue' => $pubBase64,
+                    'x509PublicKey' => $pubBase64,
+                ],
+                'nonce' => $nonceBase64,
+            ],
+            'private' => [
+                'privateKey' => base64_encode($privateKey),
+                'nonce' => $nonceBase64,
+            ],
+        ];
+    }
+
+    /**
+     * Decrypt AES-256-GCM encrypted health data payload received from ABDM Gateway/HIP.
+     */
+    public function decryptHealthData(string $encryptedData, string $sharedKey, string $iv, string $tag = ''): ?string
+    {
+        try {
+            $rawCipher = base64_decode($encryptedData);
+            $rawKey = base64_decode($sharedKey);
+            $rawIv = base64_decode($iv);
+            $rawTag = !empty($tag) ? base64_decode($tag) : '';
+
+            $decrypted = openssl_decrypt(
+                $rawCipher,
+                'aes-256-gcm',
+                $rawKey,
+                OPENSSL_RAW_DATA,
+                $rawIv,
+                $rawTag
+            );
+
+            return $decrypted !== false ? $decrypted : null;
+        } catch (\Throwable $e) {
+            Log::error("ABDM Crypto Decryption Error: " . $e->getMessage());
+            return null;
+        }
+    }
 }

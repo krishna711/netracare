@@ -15,15 +15,18 @@ class AbdmWebhookController extends Controller
     protected ScanAndShareService $scanShareService;
     protected CareContextService $careContextService;
     protected FhirBundleService $fhirBundleService;
+    protected \App\Services\Abdm\AbdmConsentService $consentService;
 
     public function __construct(
         ScanAndShareService $scanShareService,
         CareContextService $careContextService,
-        FhirBundleService $fhirBundleService
+        FhirBundleService $fhirBundleService,
+        \App\Services\Abdm\AbdmConsentService $consentService
     ) {
         $this->scanShareService = $scanShareService;
         $this->careContextService = $careContextService;
         $this->fhirBundleService = $fhirBundleService;
+        $this->consentService = $consentService;
     }
 
     /**
@@ -159,8 +162,8 @@ class AbdmWebhookController extends Controller
     }
 
     /**
-     * Handle incoming consent notification from ABDM Gateway.
-     * Route: POST /api/v3/hip/consent/notify
+     * Handle incoming consent notification from ABDM Gateway (HIU / HIP).
+     * Routes: POST /api/v3/hiu/consent/notify, POST /api/v3/hip/consent/notify
      */
     public function handleConsentNotify(Request $request): JsonResponse
     {
@@ -172,10 +175,72 @@ class AbdmWebhookController extends Controller
             'payload' => $payload,
         ]);
 
-        return response()->json([
-            'status' => 'SUCCESS',
-            'message' => 'Consent notification acknowledged.',
-            'timestamp' => now()->toISOString(),
-        ], 200);
+        try {
+            $result = $this->consentService->handleConsentNotify($payload, $requestId);
+            return response()->json($result, 200);
+        } catch (\Throwable $e) {
+            Log::error("ABDM Webhook: Consent Notify Error: " . $e->getMessage());
+            return response()->json(['error' => ['code' => 2500, 'message' => $e->getMessage()]], 200);
+        }
+    }
+
+    /**
+     * Handle incoming consent on-init callback from ABDM Gateway.
+     * Route: POST /api/v3/hiu/consent/request/on-init
+     */
+    public function handleConsentOnInit(Request $request): JsonResponse
+    {
+        $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
+        Log::info("ABDM Webhook: Consent on-init callback received", ['payload' => $request->all()]);
+
+        return response()->json(['status' => 'acknowledged'], 200);
+    }
+
+    /**
+     * Handle incoming consent on-status callback from ABDM Gateway.
+     * Route: POST /api/v3/hiu/consent/request/on-status
+     */
+    public function handleConsentOnStatus(Request $request): JsonResponse
+    {
+        Log::info("ABDM Webhook: Consent on-status callback received", ['payload' => $request->all()]);
+        return response()->json(['status' => 'acknowledged'], 200);
+    }
+
+    /**
+     * Handle incoming consent on-fetch callback from ABDM Gateway.
+     * Route: POST /api/v3/hiu/consent/on-fetch
+     */
+    public function handleConsentOnFetch(Request $request): JsonResponse
+    {
+        Log::info("ABDM Webhook: Consent on-fetch callback received", ['payload' => $request->all()]);
+        return response()->json(['status' => 'acknowledged'], 200);
+    }
+
+    /**
+     * Handle incoming health-information on-request callback from ABDM Gateway.
+     * Route: POST /api/v3/hiu/health-information/on-request
+     */
+    public function handleHealthInfoOnRequest(Request $request): JsonResponse
+    {
+        Log::info("ABDM Webhook: Health Info on-request callback received", ['payload' => $request->all()]);
+        return response()->json(['status' => 'acknowledged'], 200);
+    }
+
+    /**
+     * Handle incoming encrypted health data notification pushed by external HIP.
+     * Route: POST /api/v3/hiu/data/notification
+     */
+    public function handleDataNotification(Request $request): JsonResponse
+    {
+        $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
+        Log::info("ABDM Webhook: Incoming encrypted health data notification", ['requestId' => $requestId, 'payload' => $request->all()]);
+
+        try {
+            $result = $this->consentService->handleDataNotification($request->all(), $requestId);
+            return response()->json($result, 200);
+        } catch (\Throwable $e) {
+            Log::error("ABDM Data Notification Error: " . $e->getMessage());
+            return response()->json(['error' => ['code' => 2500, 'message' => $e->getMessage()]], 200);
+        }
     }
 }

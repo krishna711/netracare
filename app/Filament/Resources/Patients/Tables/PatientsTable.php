@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Patients\Tables;
 
+use App\Filament\Resources\Patients\Actions\AbdmConsentAction;
 use App\Filament\Resources\Patients\Actions\AbdmPatientAction;
 use App\Models\Patient;
 use App\Models\Doctor;
@@ -93,6 +94,7 @@ class PatientsTable
             ->recordActions([
                 EditAction::make(),
                 AbdmPatientAction::make(),
+                AbdmConsentAction::make(),
                 Action::make('addAppointment')
                     ->label('Appt')
                     ->icon('heroicon-o-calendar-days')
