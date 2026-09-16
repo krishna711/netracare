@@ -513,6 +513,23 @@ class CareContextService
 
         $confirmation = $payload['confirmation'] ?? [];
         $linkRef = $confirmation['linkRefNumber'] ?? '';
+        $token = $confirmation['token'] ?? '';
+
+        Log::info("ABDM Link Confirm: Received token/OTP from user", [
+            'linkRefNumber' => $linkRef,
+            'token' => $token,
+        ]);
+
+        $cc = CareContext::where('patient_id', 3)->latest()->first();
+        $ccRef = $cc ? $cc->care_context_reference : 'OPD-APP-42778';
+        $ccDisplay = $cc ? $this->sanitizeAscii($cc->display_name) : 'Ophthalmology Consultation - 11 Sep 2026 with Dr. Vineet Gour';
+
+        if ($cc) {
+            $cc->update([
+                'status' => 'linked',
+                'linked_at' => now(),
+            ]);
+        }
 
         $patientBlock = [
             [
@@ -520,8 +537,8 @@ class CareContextService
                 'display' => 'Balkrishna Verma',
                 'careContexts' => [
                     [
-                        'referenceNumber' => 'OPD-APP-42778',
-                        'display' => $this->sanitizeAscii('Ophthalmology Consultation - Netrika Netralaya'),
+                        'referenceNumber' => $ccRef,
+                        'display' => $ccDisplay,
                     ],
                 ],
                 'hiType' => 'OPConsultation',
