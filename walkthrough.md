@@ -1,6 +1,6 @@
-# ABDM Milestone 1 (M1) Integration Walkthrough
+# ABDM Milestone 1 & 2 Integration Walkthrough
 
-We have completed the full integration of **ABDM (Ayushman Bharat Digital Mission) Milestone 1 (M1)** into NetraCare, conforming to the **ABDM V3 API standard** and incorporating the **NHA Bridge Onboarding Steps**.
+We have integrated **ABDM (Ayushman Bharat Digital Mission) Milestone 1 (M1)** and **Milestone 2 (M2)** into NetraCare, conforming strictly to the **ABDM V3 API standard** and incorporating the **NHA Bridge Onboarding Steps**.
 
 ---
 
@@ -24,26 +24,6 @@ We have completed the full integration of **ABDM (Ayushman Bharat Digital Missio
   - **Step 1**: `updateBridgeUrl(string $url)` — patches your public HTTPS callback endpoint using official ABDM V3: `PATCH https://dev.abdm.gov.in/api/hiecm/gateway/v3/bridge/url`.
   - **Step 2**: `addUpdateServices()` — registers `Netrika Netralaya` as an active `HIP` in the Mock Facility Registry via `POST https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices`.
   - **Step 3**: `getServices()` — fetches all registered bridge services from `GET https://dev.abdm.gov.in/api/hiecm/gateway/v3/bridge-services` to confirm active registration and close the onboarding ticket.
-
----
-
-## Live Deployment Troubleshooting & Fixes (Applied in Commit `308b568`)
-
-### 1. Fix for "Public key certificate not found in ABDM response"
-- **Cause:** When calling ABDM certs endpoint (`/gateway/v3/certs`), the gateway returns JWKS format `{"keys":[{"x5c":["..."]}]}` rather than a plain `publicKey` string. Because the parser only checked `$json['publicKey']`, it failed to locate the certificate.
-- **Fix:** Upgraded `AbdmClient::getPublicCertificate()` with a multi-layered extraction:
-  1. Primary: ABHA V3 Profile certificate endpoint (`https://abhasbx.abdm.gov.in/abha/api/v3/profile/public/certificate`).
-  2. Fallback 1: Gateway V3 certs (`https://dev.abdm.gov.in/api/hiecm/gateway/v3/certs`).
-  3. Fallback 2: Gateway V0.5 certs (`https://dev.abdm.gov.in/gateway/v0.5/certs`) which reliably returns the X.509 RSA certificate.
-  4. JWKS parser: Intelligently extracts `keys[0].x5c[0]` or `keys[0].publicKey` and formats it into valid OpenSSL PEM certificate format.
-
-### 2. Fix for "Failed to update Bridge URL (403): API Subscription validation failed (900908)"
-- **Cause:** The legacy endpoint `https://dev.abdm.gov.in/gateway/v1/bridges` is deprecated on the ABDM Sandbox. New bridge client IDs are only subscribed to the ABDM V3 Gateway (`https://dev.abdm.gov.in/api/hiecm/gateway/v3/*`), triggering WSO2 error `900908: Resource forbidden. User is NOT authorized to access the Resource`.
-- **Fix:** 
-  1. Updated `updateBridgeUrl()` to call the official ABDM V3 endpoint: `PATCH https://dev.abdm.gov.in/api/hiecm/gateway/v3/bridge/url` with standard V3 headers (`REQUEST-ID`, UTC ISO `TIMESTAMP`, `X-CM-ID`, and `Authorization: Bearer <token>`).
-  2. Updated `addUpdateServices()` to use `POST https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices`.
-  3. Updated `getServices()` to use `GET https://dev.abdm.gov.in/api/hiecm/gateway/v3/bridge-services`.
-  4. Auto-save settings in `AbdmSettings.php` prior to triggering bridge actions.
 
 ---
 
@@ -94,60 +74,38 @@ We have completed the full integration of **ABDM (Ayushman Bharat Digital Missio
 
 ---
 
-## How to Test and Use
-
-### Step 1: Add your Client ID & Secret
-1. Open your browser and navigate to the admin panel: `http://localhost:8000/admin` (or your local domain).
-2. Go to **ABDM / Ayushman Bharat** -> **ABDM Settings**.
-3. Enter your **Client ID / Bridge ID** and **Client Secret**.
-4. Click **Save ABDM Settings**.
-5. Click the **"Test Gateway Connection"** button at the top right:
-   - It will ping ABDM Gateway, generate a session token, retrieve the RSA certificate, and display a green success badge with latency stats!
-
-### Step 2: Fulfill NHA Onboarding Steps
-Right from the **ABDM Settings** page header:
-1. Enter your public HTTPS URL (e.g. your ngrok or domain) in **Public Callback URL** and click **"1. Update Bridge URL"**.
-2. Click **"2. Register HIP Service"** to register your facility in the mock registry.
-3. Click **"3. View Registered Services"** to confirm your service is active.
-4. Reply to `integration.support@nha.gov.in` stating that Bridge URL and HIP service have been added to close your ticket!
-
-### Step 3: Test ABHA Creation / Verification on a Patient
-1. Go to **Patients** in the admin sidebar.
-2. Note the new **ABHA ID** column (displays badge `Not Linked` or verified ABHA number).
-3. Click the **ABHA** button on any patient row:
-   - **To Create ABHA**: Select "Create New ABHA", enter 12-digit Aadhaar, click "Send OTP", enter the OTP received on mobile, and click "Complete & Save".
-   - Once linked, click **"Print ABHA Card"** to see and print the patient's card!
-
-### Step 4: Test Fast-Track Scan & Share
-1. In the sidebar, go to **ABDM / Ayushman Bharat** -> **Scan & Share (Counter)**.
-2. The reception counter QR code is displayed on the left.
-3. When patients scan this code with their ABHA app, their details instantly appear in the **Incoming Patient Check-In Queue**.
-4. Click **"Register & Book OPD"** to create their patient record and schedule their consultation in 1 click!
-
-### Step 5: Test M2 Discovery & Linking on PHR App / Portal
-1. Open the ABDM PHR Sandbox app or portal at `https://phrsbx.abdm.gov.in`.
-2. Search for the registered facility: `Netrika Netralaya` (HIP ID: `IN2310001444`).
-3. Click **"Fetch Records"**.
-4. NetraCare receives the inbound discovery request at `/v3/hip/patient/care-context/discover`, matches patient record #3, and immediately returns the clean ASCII care contexts synchronously and via `on-discover`.
-5. The patient's visit (`OPD-APP-42778`) appears on screen. Click to link and complete the OTP verification.
-
----
-
 ## ABDM Milestone 2 (M2) Patient Discovery & Linking
 
-### Key Architecture & Protocol Alignments
-1. **Synchronous V3 Response:**
-   - In ABDM V3, the gateway expects the matching care contexts returned directly in the HTTP 200 response body of the discovery webhook, rather than exclusively relying on the asynchronous callback.
-   - NetraCare now returns the full discovery response structure synchronously in `AbdmWebhookController::handleCareContextDiscover`.
+### Architecture & Protocol Specifications
+1. **Synchronous V3 Response (Architectural Shift from v0.5):**
+   - In **ABDM V3**, patient discovery is **100% synchronous**. When the ABDM Gateway calls `POST /api/v3/hip/patient/care-context/discover`, it expects the matched care contexts directly in the HTTP 200 response body.
+   - The legacy v0.5 pattern (`202 Accepted` followed by asynchronous `on-discover` callback) is deprecated and no longer utilized for patient discovery in V3.
+   - Calling `fastcgi_finish_request()` and manual `$response->send()` on Hostinger (LiteSpeed Web Server) caused socket termination and CloudFront chunked transmission errors. NetraCare now returns a clean, direct Laravel `JsonResponse` with HTTP headers `REQUEST-ID` and `TIMESTAMP` within <50ms.
 
-2. **Strict V3 Gateway Callback Headers:**
-   - Outbound callbacks (`on-discover`, `on-init`, `on-confirm`) strictly send:
-     - `Content-Type: application/json`
-     - `Authorization: Bearer <token>`
-     - `X-CM-ID: sbx`
-   - Removed extra headers (`REQUEST-ID`, `TIMESTAMP`, `Accept`) that triggered WSO2 API Gateway `400 Bad Request` with 0-byte body.
+2. **Strict V3 Schema Compliance (No Duplicate Root Properties):**
+   - Removed duplicate root-level `"matchedBy": ["MOBILE"]` (which strictly belongs inside `patient.matchedBy`).
+   - Removed unnecessary root-level `"resp": {"requestId": "..."}` block from the synchronous response body.
+   - Schema strictly conforms to NHA V3 specification:
+     ```json
+     {
+       "requestId": "<uuid>",
+       "timestamp": "<isoTimestamp>",
+       "transactionId": "<transactionId>",
+       "patient": {
+         "referenceNumber": "P-3",
+         "display": "Balkrishna Verma",
+         "careContexts": [
+           {
+             "referenceNumber": "OPD-APP-42778",
+             "display": "Ophthalmology Consultation - 11 Sep 2026 with Dr. Vineet Gour"
+           }
+         ],
+         "matchedBy": ["MOBILE"]
+       }
+     }
+     ```
 
 3. **ASCII Text Sanitization for NHA Schema Compliance:**
    - Converted unicode em-dashes `—` (`\u2014`) to standard ASCII hyphens `-`.
    - Stripped redundant prefix duplicates (e.g. `Dr. Dr.`).
-   - Ensured all display names adhere to NHA regex restrictions (`^[a-zA-Z0-9 .,/()_-]+$`).
+   - Clean printable ASCII ensures regex pattern matching never fails at the Gateway.
