@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::dropIfExists('abdm_consents');
+
         Schema::create('abdm_consents', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('patient_id')->nullable()->constrained('patients')->nullOnDelete();
+            $table->unsignedBigInteger('patient_id')->nullable()->index();
             $table->string('consent_request_id')->unique()->index();
             $table->string('consent_id')->nullable()->index();
             $table->string('status', 50)->default('REQUESTED')->index(); // REQUESTED, GRANTED, DENIED, EXPIRED, REVOKED, TRANSFERRED
