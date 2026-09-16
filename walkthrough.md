@@ -74,38 +74,44 @@ We have integrated **ABDM (Ayushman Bharat Digital Mission) Milestone 1 (M1)** a
 
 ---
 
-## ABDM Milestone 2 (M2) Patient Discovery & Linking
-
-### Architecture & Protocol Specifications
-1. **Synchronous V3 Response (Architectural Shift from v0.5):**
-   - In **ABDM V3**, patient discovery is **100% synchronous**. When the ABDM Gateway calls `POST /api/v3/hip/patient/care-context/discover`, it expects the matched care contexts directly in the HTTP 200 response body.
-   - The legacy v0.5 pattern (`202 Accepted` followed by asynchronous `on-discover` callback) is deprecated and no longer utilized for patient discovery in V3.
-   - Calling `fastcgi_finish_request()` and manual `$response->send()` on Hostinger (LiteSpeed Web Server) caused socket termination and CloudFront chunked transmission errors. NetraCare now returns a clean, direct Laravel `JsonResponse` with HTTP headers `REQUEST-ID` and `TIMESTAMP` within <50ms.
-
-2. **Strict V3 Schema Compliance (No Duplicate Root Properties):**
-   - Removed duplicate root-level `"matchedBy": ["MOBILE"]` (which strictly belongs inside `patient.matchedBy`).
-   - Removed unnecessary root-level `"resp": {"requestId": "..."}` block from the synchronous response body.
-   - Schema strictly conforms to NHA V3 specification:
+### Official NHA Milestone 2 Postman Specification Alignment (`Milestone_2_16_02_2026_6e734af067.postman_collection`)
+1. **`On Discovery` (`POST https://dev.abdm.gov.in/api/hiecm/user-initiated-linking/v3/patient/care-context/on-discover`):**
+   - **Payload Structure**:
      ```json
      {
-       "requestId": "<uuid>",
-       "timestamp": "<isoTimestamp>",
        "transactionId": "<transactionId>",
-       "patient": {
-         "referenceNumber": "P-3",
-         "display": "Balkrishna Verma",
-         "careContexts": [
-           {
-             "referenceNumber": "OPD-APP-42778",
-             "display": "Ophthalmology Consultation - 11 Sep 2026 with Dr. Vineet Gour"
-           }
-         ],
-         "matchedBy": ["MOBILE"]
+       "patient": [
+         {
+           "referenceNumber": "P-3",
+           "display": "Balkrishna Verma",
+           "careContexts": [
+             {
+               "referenceNumber": "OPD-APP-42778",
+               "display": "Ophthalmology Consultation - 11 Sep 2026 with Dr. Vineet Gour"
+             }
+           ],
+           "hiType": "OPConsultation",
+           "count": 1
+         }
+       ],
+       "matchedBy": ["MOBILE"],
+       "response": {
+         "requestId": "<inbound-requestId>"
        }
      }
      ```
+   - **Critical Nuances**:
+     - `patient` is an **array of objects** (`[ { ... } ]`), not a single object.
+     - Each patient object in the array specifies `"hiType"` (e.g. `OPConsultation`) and `"count": 1`.
+     - `"matchedBy"` is placed at the **root level**.
+     - The correlation object is named **`"response"`** (not `"resp"`).
+     - Returns `202 Accepted` from Gateway.
 
-3. **ASCII Text Sanitization for NHA Schema Compliance:**
-   - Converted unicode em-dashes `—` (`\u2014`) to standard ASCII hyphens `-`.
-   - Stripped redundant prefix duplicates (e.g. `Dr. Dr.`).
-   - Clean printable ASCII ensures regex pattern matching never fails at the Gateway.
+2. **`Link on-init` (`POST https://dev.abdm.gov.in/api/hiecm/user-initiated-linking/v3/link/care-context/on-init`):**
+   - Correlates with `"response": { "requestId": "<inbound-requestId>" }`.
+   - Sends `meta.communicationMedium: "MOBILE"` and `communicationHint: "OTP"`.
+
+3. **`Link on Confirm` (`POST https://dev.abdm.gov.in/api/hiecm/user-initiated-linking/v3/link/care-context/on-confirm`):**
+   - Correlates with `"response": { "requestId": "<inbound-requestId>" }`.
+   - Sends confirmed care contexts inside the `patient` array.
+
