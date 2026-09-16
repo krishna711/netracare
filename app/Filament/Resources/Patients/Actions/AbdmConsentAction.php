@@ -108,7 +108,7 @@ class AbdmConsentAction
                     Section::make('Initiate New Consent Request (M3 HIU)')
                         ->description('Request patient permission via their ABHA app to fetch past prescriptions, lab tests, and hospital discharge summaries.')
                         ->schema([
-                            Grid::make(2)->schema([
+                            Grid::make(3)->schema([
                                 TextInput::make('doctor_name')
                                     ->label('Requesting Doctor')
                                     ->default('Dr. Vineet Gour')
@@ -124,19 +124,29 @@ class AbdmConsentAction
                                     ])
                                     ->default('CAREMGT')
                                     ->required(),
+
+                                Select::make('hip_mode')
+                                    ->label('Target Facility (Records Provider)')
+                                    ->options([
+                                        'NETRIKA' => 'Netrika Netralaya (Specific Facility IN2310001444)',
+                                        'ALL' => 'All Linked Facilities (General Consent)',
+                                    ])
+                                    ->default('NETRIKA')
+                                    ->helperText('Select Netrika Netralaya for self-contained testing.')
+                                    ->required(),
                             ]),
 
                             CheckboxList::make('hi_types')
                                 ->label('Health Information Types to Request')
                                 ->options([
+                                    'OPConsultation' => 'OPD Consultations & Clinical Notes',
                                     'Prescription' => 'Prescriptions & Medications',
                                     'DiagnosticReport' => 'Diagnostic & Lab Reports',
-                                    'OPConsultation' => 'OPD Consultations & Clinical Notes',
                                     'DischargeSummary' => 'Discharge Summaries (Inpatient)',
                                     'ImmunizationRecord' => 'Immunization Records',
                                     'HealthDocumentRecord' => 'General Health Documents',
                                 ])
-                                ->default(['Prescription', 'DiagnosticReport', 'OPConsultation'])
+                                ->default(['OPConsultation'])
                                 ->columns(2)
                                 ->required(),
 
@@ -179,7 +189,8 @@ class AbdmConsentAction
                     $options = [
                         'doctor_name' => $data['doctor_name'] ?? 'Dr. Vineet Gour',
                         'purpose' => $data['purpose'] ?? 'CAREMGT',
-                        'hi_types' => $data['hi_types'] ?? ['Prescription', 'DiagnosticReport', 'OPConsultation'],
+                        'hi_types' => $data['hi_types'] ?? ['OPConsultation'],
+                        'hip_id' => ($data['hip_mode'] ?? 'NETRIKA') === 'NETRIKA' ? 'IN2310001444' : null,
                         'date_from' => $data['date_from'] ?? now()->subYears(2)->format('Y-m-d'),
                         'date_to' => isset($data['date_to']) ? ($data['date_to'] . ' 23:59:59') : now()->endOfDay(),
                         'data_erase_at' => isset($data['data_erase_at']) ? ($data['data_erase_at'] . ' 23:59:59') : now()->addMonths(1)->endOfDay(),

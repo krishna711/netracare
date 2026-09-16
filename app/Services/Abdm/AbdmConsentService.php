@@ -31,7 +31,7 @@ class AbdmConsentService
             throw new Exception("Patient does not have a linked ABHA address or ABHA number.");
         }
 
-        $hiuId = $this->client->getHipId() ?: 'IN2310001444';
+        $hiuId = !empty($options['hiu_id']) ? $options['hiu_id'] : ($this->client->getClientId() ?: 'SBXID_075083');
         $doctorName = $options['doctor_name'] ?? 'Dr. Vineet Gour';
         $purpose = $options['purpose'] ?? 'CAREMGT';
         $hiTypes = $options['hi_types'] ?? [
@@ -64,8 +64,8 @@ class AbdmConsentService
                 'hiu' => [
                     'id' => $hiuId,
                 ],
-                'hip' => null,
-                'careContexts' => null,
+                'hip' => !empty($options['hip_id']) ? ['id' => $options['hip_id']] : null,
+                'careContexts' => !empty($options['care_contexts']) ? $options['care_contexts'] : null,
                 'requester' => [
                     'name' => $doctorName,
                     'identifier' => [
@@ -141,7 +141,7 @@ class AbdmConsentService
      */
     public function getConsentStatus(string $consentRequestId): array
     {
-        $hiuId = $this->client->getHipId() ?: 'IN2310001444';
+        $hiuId = $this->client->getClientId() ?: 'SBXID_075083';
         $url = "{$this->client->getGatewayBaseUrl()}/consent/v3/request/status";
 
         $headers = [
@@ -252,7 +252,7 @@ class AbdmConsentService
      */
     public function fetchConsentArtefact(string $consentId): array
     {
-        $hiuId = $this->client->getHipId() ?: 'IN2310001444';
+        $hiuId = $this->client->getClientId() ?: 'SBXID_075083';
         $url = "{$this->client->getGatewayBaseUrl()}/consent/v3/fetch";
 
         $headers = [
@@ -287,7 +287,7 @@ class AbdmConsentService
             throw new Exception("Consent has not been granted or consentId is missing.");
         }
 
-        $hiuId = $this->client->getHipId() ?: 'IN2310001444';
+        $hiuId = $this->client->getClientId() ?: 'SBXID_075083';
         $dataPushUrl = config('abdm.public_callback_url', url('/')) . '/api/v3/hiu/data/notification';
 
         // Generate Ephemeral Diffie-Hellman (Curve25519) key material
@@ -382,7 +382,7 @@ class AbdmConsentService
      */
     public function dispatchDataFlowNotify(AbdmConsent $consent, string $transactionId): void
     {
-        $hiuId = $this->client->getHipId() ?: 'IN2310001444';
+        $hiuId = $this->client->getClientId() ?: 'SBXID_075083';
         $url = "{$this->client->getGatewayBaseUrl()}/data-flow/v3/health-information/notify";
 
         $payload = [

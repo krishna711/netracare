@@ -119,7 +119,7 @@ class AbdmBridgeService
             ],
         ];
 
-        // Combined payload registering both HIP ID and Bridge ID
+        // Combined payload registering HIP ID (Facility) and Bridge ID (HIU)
         $combinedPayload = [
             [
                 'id' => $hipId,
@@ -130,10 +130,10 @@ class AbdmBridgeService
             ],
             [
                 'id' => $this->client->getClientId(),
-                'name' => $facilityName,
-                'type' => 'HIP',
+                'name' => $facilityName . ' HIU',
+                'type' => 'HIU',
                 'active' => true,
-                'alias' => array_values(array_unique([$facilityName, $this->client->getClientId()])),
+                'alias' => array_values(array_unique([$facilityName . ' HIU', $this->client->getClientId()])),
             ],
         ];
 
