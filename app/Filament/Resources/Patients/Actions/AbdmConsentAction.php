@@ -27,7 +27,8 @@ class AbdmConsentAction
             ->color('info')
             ->tooltip('ABDM Milestone 3: Request & View Patient Health Records from other Hospitals via ABHA Consent')
             ->modalHeading(fn (Patient $record): string => "ABDM External Health Records (HIU) - {$record->name} (UHID: {$record->id})")
-            ->modalWidth('4xl')
+            ->modalWidth('7xl')
+            ->extraModalWindowAttributes(['style' => 'width: 80vw !important; max-width: 80vw !important;'])
             ->modalSubmitActionLabel('Submit')
             ->form(function (Patient $record): array {
                 if (!$record->isAbhaVerified()) {
@@ -55,7 +56,7 @@ class AbdmConsentAction
                 if ($pastConsents->isEmpty()) {
                     $historyHtml = "<div class='text-xs text-gray-500 italic p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700'>No consent requests initiated yet for this patient. Fill the form below to request external health records.</div>";
                 } else {
-                    $historyHtml = "<div class='divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden text-xs'>";
+                    $historyHtml = "<div class='max-h-64 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg text-xs'>";
                     foreach ($pastConsents as $c) {
                         $badgeColor = match ($c->status) {
                             'GRANTED' => 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300',
@@ -134,6 +135,7 @@ class AbdmConsentAction
 
                 return [
                     Section::make('Past Consent Requests & Received Health Records')
+                        ->collapsible()
                         ->schema([
                             Placeholder::make('consent_history')
                                 ->label('')
@@ -142,6 +144,7 @@ class AbdmConsentAction
 
                     Radio::make('operation')
                         ->label('Select Action')
+                        ->inline()
                         ->options([
                             'status' => '1. Check / Sync Approval Status from ABDM Gateway',
                             'fetch' => '2. Fetch Medical Records (Data Flow for Granted Consent)',
@@ -231,7 +234,7 @@ class AbdmConsentAction
                                     'HealthDocumentRecord' => 'General Health Documents',
                                 ])
                                 ->default(['OPConsultation'])
-                                ->columns(2)
+                                ->columns(3)
                                 ->required(fn ($get) => $get('operation') === 'new'),
 
                             Grid::make(3)->schema([
