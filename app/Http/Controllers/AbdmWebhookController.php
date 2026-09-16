@@ -77,6 +77,9 @@ class AbdmWebhookController extends Controller
         try {
             $result = $this->careContextService->handleDiscover($payload, $requestId);
 
+            // Dispatch official V3 on-discover callback to ABDM Gateway
+            $this->careContextService->dispatchOnDiscover($result, $requestId);
+
             return response()->json($result, 200, [
                 'Content-Type' => 'application/json',
                 'REQUEST-ID' => $requestId,

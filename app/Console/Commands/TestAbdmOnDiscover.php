@@ -26,52 +26,35 @@ class TestAbdmOnDiscover extends Command
             return 1;
         }
 
-        $txId = $this->option('tx') ?: '5e588c29-3c50-4059-b80d-f917dd4f4920';
-        $inboundReqId = $this->option('req') ?: '80c2ac40-43f0-426a-bff7-ced67b901dba';
+        $txId = $this->option('tx') ?: '82f43d76-0f9e-498f-844b-dc2e8d6c67be';
+        $inboundReqId = $this->option('req') ?: '950f75b5-efbd-41a0-87ed-74acb807407b';
 
         $cleanDisplay = $careContextService->sanitizeAscii("Ophthalmology Consultation - 11 Sep 2026 with Dr. Vineet Gour");
 
-        // Payload with 'resp' block
-        $payloadWithResp = [
-            'requestId' => (string) Str::uuid(),
-            'timestamp' => $client->getIsoTimestamp(),
+        // Official NHA Milestone 2 Postman Collection Payload
+        $payloadOfficialNha = [
             'transactionId' => $txId,
             'patient' => [
-                'referenceNumber' => 'P-3',
-                'display' => 'Balkrishna Verma',
-                'careContexts' => [
-                    [
-                        'referenceNumber' => 'OPD-APP-42778',
-                        'display' => $cleanDisplay,
+                [
+                    'referenceNumber' => 'P-3',
+                    'display' => 'Balkrishna Verma',
+                    'careContexts' => [
+                        [
+                            'referenceNumber' => 'OPD-APP-42778',
+                            'display' => $cleanDisplay,
+                        ],
                     ],
+                    'hiType' => 'OPConsultation',
+                    'count' => 1,
                 ],
-                'matchedBy' => ['MOBILE'],
             ],
-            'resp' => [
+            'matchedBy' => ['MOBILE'],
+            'response' => [
                 'requestId' => $inboundReqId,
             ],
         ];
 
-        // Payload without 'resp' block (standard V3 postman format)
-        $payloadNoResp = [
-            'requestId' => (string) Str::uuid(),
-            'timestamp' => $client->getIsoTimestamp(),
-            'transactionId' => $txId,
-            'patient' => [
-                'referenceNumber' => 'P-3',
-                'display' => 'Balkrishna Verma',
-                'careContexts' => [
-                    [
-                        'referenceNumber' => 'OPD-APP-42778',
-                        'display' => $cleanDisplay,
-                    ],
-                ],
-                'matchedBy' => ['MOBILE'],
-            ],
-        ];
-
         $v3Url = "{$client->getGatewayBaseUrl()}/user-initiated-linking/v3/patient/care-context/on-discover";
-        $v05Url = "https://dev.abdm.gov.in/gateway/v0.5/care-contexts/on-discover";
 
         $headersV3 = [
             'Authorization' => 'Bearer ' . $token,
@@ -81,56 +64,14 @@ class TestAbdmOnDiscover extends Command
             'TIMESTAMP' => $client->getIsoTimestamp(),
         ];
 
-        // Test 0: Test local handleDiscover synchronous output
-        $this->info("\n--- Test 0: Local V3 Synchronous Discovery Handler Output ---");
-        $mockInboundPayload = [
-            'transactionId' => $txId,
-            'patient' => [
-                'id' => '91734576332054@sbx',
-                'verifiedIdentifiers' => [
-                    ['type' => 'MOBILE', 'value' => '9893990441'],
-                ],
-                'name' => 'Balkrishna Verma',
-            ],
-        ];
-        try {
-            $syncOutput = $careContextService->handleDiscover($mockInboundPayload, $inboundReqId);
-            $this->line("Synchronous Response Body to Gateway:");
-            $this->line(json_encode($syncOutput, JSON_PRETTY_PRINT));
-        } catch (\Throwable $e) {
-            $this->warn("Local handleDiscover error: " . $e->getMessage());
-        }
-
-        // Test 1: V3 with resp block
-        $this->info("\n--- Test 1: V3 on-discover WITH resp block ---");
+        // Test 1: Official NHA Milestone 2 Postman Schema
+        $this->info("\n--- Test 1: Official NHA Milestone 2 on-discover ---");
         $this->line("URL: {$v3Url}");
-        $this->line("Payload: " . json_encode($payloadWithResp, JSON_PRETTY_PRINT));
-        $res1 = Http::timeout(15)->withHeaders($headersV3)->post($v3Url, $payloadWithResp);
+        $this->line("Payload: " . json_encode($payloadOfficialNha, JSON_PRETTY_PRINT));
+        $res1 = Http::timeout(15)->withHeaders($headersV3)->post($v3Url, $payloadOfficialNha);
         $this->line("Status: " . $res1->status());
         $this->line("Body: " . $res1->body());
         $this->line("Headers: " . json_encode($res1->headers(), JSON_PRETTY_PRINT));
-
-        // Test 2: V3 without resp block
-        $this->info("\n--- Test 2: V3 on-discover WITHOUT resp block ---");
-        $res2 = Http::timeout(15)->withHeaders($headersV3)->post($v3Url, $payloadNoResp);
-        $this->line("Status: " . $res2->status());
-        $this->line("Body: " . $res2->body());
-        $this->line("Headers: " . json_encode($res2->headers(), JSON_PRETTY_PRINT));
-
-        // Test 3: v0.5 endpoint
-        $this->info("\n--- Test 3: v0.5 on-discover ---");
-        try {
-            $v05Token = $client->getV05SessionToken();
-            $res3 = Http::timeout(15)->withHeaders([
-                'Authorization' => 'Bearer ' . $v05Token,
-                'Content-Type' => 'application/json',
-                'X-CM-ID' => $client->getCmId(),
-            ])->post($v05Url, $payloadWithResp);
-            $this->line("Status: " . $res3->status());
-            $this->line("Body: " . $res3->body());
-        } catch (\Throwable $e) {
-            $this->warn("v0.5 test error: " . $e->getMessage());
-        }
 
         return 0;
     }

@@ -400,20 +400,27 @@ class CareContextService
             ];
         }
 
-        // 3. Build V3 response object strictly according to ABDM V3 spec (no root matchedBy, no root resp)
+        // 3. Build V3 response object strictly according to official NHA Milestone 2 specification
+        $patientEntry = [
+            'referenceNumber' => "P-{$patient->id}",
+            'display' => $this->sanitizeAscii($patient->name),
+            'careContexts' => $careContexts,
+            'hiType' => 'OPConsultation',
+            'count' => count($careContexts),
+        ];
+
         $responsePayload = [
-            'requestId' => (string) Str::uuid(),
-            'timestamp' => $this->client->getIsoTimestamp(),
             'transactionId' => $txId,
             'patient' => [
-                'referenceNumber' => "P-{$patient->id}",
-                'display' => $this->sanitizeAscii($patient->name),
-                'careContexts' => $careContexts,
-                'matchedBy' => $mobile ? ['MOBILE'] : ['MR'],
+                $patientEntry,
+            ],
+            'matchedBy' => $mobile ? ['MOBILE'] : ['MR'],
+            'response' => [
+                'requestId' => $requestId,
             ],
         ];
 
-        Log::info("ABDM Discovery: Returning synchronous V3 response inline", [
+        Log::info("ABDM Discovery: Returning V3 discovery response", [
             'transactionId' => $txId,
             'patientRef' => "P-{$patient->id}",
             'careContextsCount' => count($careContexts),
@@ -424,18 +431,18 @@ class CareContextService
     }
 
     /**
-     * Dispatch on-discover response to ABDM Gateway (supports V3 and v0.5).
+     * Dispatch on-discover response callback to ABDM Gateway according to official NHA collection.
      */
     public function dispatchOnDiscover(array $payload, string $requestId): void
     {
         $v3Url = "{$this->client->getGatewayBaseUrl()}/user-initiated-linking/v3/patient/care-context/on-discover";
 
-        // Ensure resp correlation block is present
-        if (!isset($payload['resp'])) {
-            $payload['resp'] = ['requestId' => $requestId];
+        // Ensure official response correlation block is present
+        if (!isset($payload['response'])) {
+            $payload['response'] = ['requestId' => $requestId];
         }
 
-        Log::info("ABDM Discovery: Sending V3 on-discover to {$v3Url}", ['payload' => $payload]);
+        Log::info("ABDM Discovery: Sending V3 on-discover callback to {$v3Url}", ['payload' => $payload]);
 
         try {
             $res = $this->client->sendGatewayV3Callback($v3Url, $payload);
@@ -444,40 +451,8 @@ class CareContextService
                 'json' => $res->json(),
                 'headers' => $res->headers(),
             ]);
-
-            if ($res->status() !== 200 && $res->status() !== 202) {
-                $this->dispatchV05OnDiscover($payload, $requestId);
-            }
         } catch (\Throwable $e) {
             Log::warning("ABDM Discovery: V3 on-discover exception: " . $e->getMessage());
-            $this->dispatchV05OnDiscover($payload, $requestId);
-        }
-    }
-
-    /**
-     * Fallback to v0.5 on-discover endpoint if V3 fails.
-     */
-    protected function dispatchV05OnDiscover(array $payload, string $requestId): void
-    {
-        try {
-            $v05Url = "https://dev.abdm.gov.in/gateway/v0.5/care-contexts/on-discover";
-            $v05Token = $this->client->getV05SessionToken();
-            $v05Payload = array_merge($payload, [
-                'resp' => ['requestId' => $requestId],
-            ]);
-
-            $res05 = Http::timeout(10)->withHeaders([
-                'Authorization' => 'Bearer ' . $v05Token,
-                'Content-Type' => 'application/json',
-                'X-CM-ID' => $this->client->getCmId(),
-            ])->post($v05Url, $v05Payload);
-
-            Log::info("ABDM Discovery: v0.5 on-discover status: {$res05->status()}", [
-                'body' => $res05->body(),
-                'headers' => $res05->headers(),
-            ]);
-        } catch (\Throwable $e2) {
-            Log::error("ABDM Discovery: All on-discover callbacks failed: " . $e2->getMessage());
         }
     }
 
@@ -501,18 +476,19 @@ class CareContextService
             'authenticationType' => 'DIRECT',
             'meta' => [
                 'communicationMedium' => 'MOBILE',
-                'communicationHint' => '9893990441',
+                'communicationHint' => 'OTP',
                 'communicationExpiry' => $expiry,
             ],
         ];
 
-        // Send on-init callback to ABDM Gateway
+        // Send on-init callback to ABDM Gateway according to official NHA specification
         $v3OnInitUrl = "{$this->client->getGatewayBaseUrl()}/user-initiated-linking/v3/link/care-context/on-init";
         $onInitPayload = [
-            'requestId' => (string) Str::uuid(),
-            'timestamp' => $this->client->getIsoTimestamp(),
             'transactionId' => $txId,
             'link' => $linkBlock,
+            'response' => [
+                'requestId' => $requestId,
+            ],
         ];
 
         try {
@@ -525,10 +501,7 @@ class CareContextService
             Log::warning("ABDM Link Init: on-init failed: " . $e->getMessage());
         }
 
-        return [
-            'transactionId' => $txId,
-            'link' => $linkBlock,
-        ];
+        return $onInitPayload;
     }
 
     /**
@@ -541,23 +514,28 @@ class CareContextService
         $confirmation = $payload['confirmation'] ?? [];
         $linkRef = $confirmation['linkRefNumber'] ?? '';
 
-        $confirmBlock = [
-            'referenceNumber' => 'P-3',
-            'display' => 'Balkrishna Verma',
-            'careContexts' => [
-                [
-                    'referenceNumber' => 'OPD-APP-42778',
-                    'display' => $this->sanitizeAscii('Ophthalmology Consultation - Netrika Netralaya'),
+        $patientBlock = [
+            [
+                'referenceNumber' => 'P-3',
+                'display' => 'Balkrishna Verma',
+                'careContexts' => [
+                    [
+                        'referenceNumber' => 'OPD-APP-42778',
+                        'display' => $this->sanitizeAscii('Ophthalmology Consultation - Netrika Netralaya'),
+                    ],
                 ],
+                'hiType' => 'OPConsultation',
+                'count' => 1,
             ],
         ];
 
-        // Send on-confirm callback to ABDM Gateway
+        // Send on-confirm callback to ABDM Gateway according to official NHA specification
         $v3OnConfirmUrl = "{$this->client->getGatewayBaseUrl()}/user-initiated-linking/v3/link/care-context/on-confirm";
         $onConfirmPayload = [
-            'requestId' => (string) Str::uuid(),
-            'timestamp' => $this->client->getIsoTimestamp(),
-            'patient' => $confirmBlock,
+            'patient' => $patientBlock,
+            'response' => [
+                'requestId' => $requestId,
+            ],
         ];
 
         try {
@@ -570,9 +548,7 @@ class CareContextService
             Log::warning("ABDM Link Confirm: on-confirm failed: " . $e->getMessage());
         }
 
-        return [
-            'patient' => $confirmBlock,
-        ];
+        return $onConfirmPayload;
     }
 
     /**
