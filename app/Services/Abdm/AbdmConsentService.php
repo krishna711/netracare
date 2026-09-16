@@ -41,9 +41,9 @@ class AbdmConsentService
             'DischargeSummary',
         ];
 
-        $from = $options['date_from'] ?? now()->subYears(3)->toISOString();
-        $to = $options['date_to'] ?? now()->toISOString();
-        $eraseAt = $options['data_erase_at'] ?? now()->addMonths(1)->toISOString();
+        $from = $this->formatAbdmDate($options['date_from'] ?? now()->subYears(3));
+        $to = $this->formatAbdmDate($options['date_to'] ?? now());
+        $eraseAt = $this->formatAbdmDate($options['data_erase_at'] ?? now()->addMonths(1));
 
         $consentRequestId = (string) Str::uuid();
 
@@ -293,8 +293,8 @@ class AbdmConsentService
             'key_material' => $keyMaterial,
         ]);
 
-        $from = $consent->date_from ? $consent->date_from->toISOString() : now()->subYears(3)->toISOString();
-        $to = $consent->date_to ? $consent->date_to->toISOString() : now()->toISOString();
+        $from = $this->formatAbdmDate($consent->date_from ?? now()->subYears(3));
+        $to = $this->formatAbdmDate($consent->date_to ?? now());
 
         $payload = [
             'hiRequest' => [
@@ -410,5 +410,26 @@ class AbdmConsentService
         } catch (\Throwable $e) {
             Log::warning("ABDM M3: Data Flow Notify error: " . $e->getMessage());
         }
+    }
+
+    /**
+     * Format a date or timestamp into strict ABDM ISO format: yyyy-MM-dd'T'HH:mm:ss.SSS'Z'
+     */
+    public function formatAbdmDate($date): string
+    {
+        if ($date instanceof \DateTimeInterface) {
+            return $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.v\Z');
+        }
+
+        if (is_numeric($date)) {
+            return gmdate('Y-m-d\TH:i:s.000\Z', (int)$date);
+        }
+
+        $timestamp = strtotime((string)$date);
+        if ($timestamp !== false) {
+            return gmdate('Y-m-d\TH:i:s.000\Z', $timestamp);
+        }
+
+        return gmdate('Y-m-d\TH:i:s.000\Z');
     }
 }

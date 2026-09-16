@@ -180,9 +180,9 @@ class AbdmConsentAction
                         'doctor_name' => $data['doctor_name'] ?? 'Dr. Vineet Gour',
                         'purpose' => $data['purpose'] ?? 'CAREMGT',
                         'hi_types' => $data['hi_types'] ?? ['Prescription', 'DiagnosticReport', 'OPConsultation'],
-                        'date_from' => isset($data['date_from']) ? date('c', strtotime($data['date_from'])) : now()->subYears(2)->toISOString(),
-                        'date_to' => isset($data['date_to']) ? date('c', strtotime($data['date_to'])) : now()->toISOString(),
-                        'data_erase_at' => isset($data['data_erase_at']) ? date('c', strtotime($data['data_erase_at'])) : now()->addMonths(1)->toISOString(),
+                        'date_from' => $data['date_from'] ?? now()->subYears(2),
+                        'date_to' => $data['date_to'] ?? now(),
+                        'data_erase_at' => $data['data_erase_at'] ?? now()->addMonths(1),
                     ];
 
                     $result = $consentService->initConsentRequest($record, $options);
