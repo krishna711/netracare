@@ -349,7 +349,12 @@ class AppointmentsTable
                     ->label('WA')
                     ->icon('heroicon-o-chat-bubble-left-right')
                     ->color('success')
-                    ->url(fn(Appointment $record): string => "https://wa.me/+91{$record->patient->mobile}?text=" . urlencode("Hello {$record->patient->name}, Welcome to Netrika Netralaya Bhopal. Your registration has been confirmed."))
+                    ->visible(fn(Appointment $record) => !empty($record->patient?->mobile))
+                    ->url(function (Appointment $record): string {
+                        $mobile = preg_replace('/[^0-9]/', '', (string) ($record->patient?->mobile ?? ''));
+                        $name = $record->patient?->name ?? 'Patient';
+                        return "https://wa.me/+91{$mobile}?text=" . urlencode("Hello {$name}, Welcome to Netrika Netralaya Bhopal. Your registration has been confirmed.");
+                    })
                     ->openUrlInNewTab(),
                 Action::make('eyeCard')
                     ->label('EC')
@@ -687,7 +692,7 @@ class AppointmentsTable
                                 Tabs\Tab::make('Glass')
                                     ->schema([
                                         Grid::make(2)->schema([
-                                            TextInput::make('patient_name')->label('Patient Name')->default(fn(Appointment $record) => $record->patient->name)->disabled(),
+                                            TextInput::make('patient_name')->label('Patient Name')->default(fn(Appointment $record) => $record->patient?->name ?? '')->disabled(),
                                             TextInput::make('referred_by')->label('Referred By'),
                                         ]),
                                         Grid::make(1)->schema([
@@ -1163,7 +1168,7 @@ class AppointmentsTable
                     ->form([
                         TextInput::make('patient_name')
                             ->label('Patient Name')
-                            ->default(fn(Appointment $record) => $record->patient->name)
+                            ->default(fn(Appointment $record) => $record->patient?->name ?? '')
                             ->disabled(),
                         Select::make('description')
                             ->options([
