@@ -13,7 +13,8 @@
     RewriteCond %{HTTP:x-xsrf-token} .
     RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
 
-    # Redirect Trailing Slashes If Not A Folder...
+    # Redirect Trailing Slashes If Not A Folder (exempt API and ABDM webhook routes)...
+    RewriteCond %{REQUEST_URI} !^/(api|v3|v1|v0.5|patients|patient|share|running-token|token)
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_URI} (.+)/$
     RewriteRule ^ %1 [L,R=301]
@@ -23,3 +24,9 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# Disable LiteSpeed cache on API and ABDM webhook routes
+<IfModule LiteSpeed>
+    CacheDisable
+</IfModule>
+

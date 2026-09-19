@@ -35,7 +35,29 @@ class AbdmWebhookController extends Controller
      */
     public function handlePatientShare(Request $request): JsonResponse
     {
-        $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
+        if ($request->isMethod('OPTIONS')) {
+            return response()->json(['status' => 'OK'], 200, [
+                'Access-Control-Allow-Origin' => '*',
+                'Access-Control-Allow-Methods' => 'POST, GET, OPTIONS, HEAD',
+                'Access-Control-Allow-Headers' => '*',
+            ]);
+        }
+
+        if ($request->isMethod('GET')) {
+            return response()->json([
+                'status' => 'SUCCESS',
+                'message' => 'ABDM Scan & Share endpoint is ready and operational.',
+            ], 200);
+        }
+
+        $requestId = $request->header('REQUEST-ID')
+            ?: $request->header('request-id')
+            ?: $request->header('X-Request-Id')
+            ?: $request->header('x-request-id')
+            ?: $request->input('requestId')
+            ?: $request->input('request-id')
+            ?: (string) Str::uuid();
+
         $payload = $request->all();
         if (empty($payload)) {
             $payload = json_decode($request->getContent(), true) ?: [];
@@ -55,6 +77,7 @@ class AbdmWebhookController extends Controller
                 'Content-Type' => 'application/json',
                 'REQUEST-ID' => $requestId,
                 'TIMESTAMP' => (new \DateTime('now', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.000\Z'),
+                'Access-Control-Allow-Origin' => '*',
             ];
 
             return response()->json([
@@ -87,6 +110,7 @@ class AbdmWebhookController extends Controller
             ]);
         }
     }
+
 
 
     /**
@@ -365,5 +389,108 @@ class AbdmWebhookController extends Controller
             Log::error("ABDM Data Notification Error: " . $e->getMessage());
             return response()->json(['error' => ['code' => 2500, 'message' => $e->getMessage()]], 200);
         }
+    }
+
+    /**
+     * Handle incoming running token status request from ABDM Gateway / PHR App.
+     * Route: POST /api/v3/hip/patient/running-token/status
+     */
+    public function handleRunningTokenStatus(Request $request): JsonResponse
+    {
+        if ($request->isMethod('OPTIONS')) {
+            return response()->json(['status' => 'OK'], 200, [
+                'Access-Control-Allow-Origin' => '*',
+                'Access-Control-Allow-Methods' => 'POST, GET, OPTIONS, HEAD',
+                'Access-Control-Allow-Headers' => '*',
+            ]);
+        }
+
+        if ($request->isMethod('GET')) {
+            return response()->json([
+                'status' => 'SUCCESS',
+                'message' => 'ABDM Running Token service is active.',
+            ], 200);
+        }
+
+        $requestId = $request->header('REQUEST-ID')
+            ?: $request->header('request-id')
+            ?: $request->header('X-Request-Id')
+            ?: $request->header('x-request-id')
+            ?: $request->input('requestId')
+            ?: $request->input('request-id')
+            ?: (string) Str::uuid();
+
+        $payload = $request->all();
+        if (empty($payload)) {
+            $payload = json_decode($request->getContent(), true) ?: [];
+        }
+
+        Log::info("ABDM Webhook: Incoming running token status [{$request->method()} {$request->fullUrl()}]", [
+            'requestId' => $requestId,
+            'headers' => $request->headers->all(),
+            'payload' => $payload,
+        ]);
+
+        $result = $this->scanShareService->handleRunningTokenStatus($payload, $requestId);
+
+        $responseHeaders = [
+            'Content-Type' => 'application/json',
+            'REQUEST-ID' => $requestId,
+            'TIMESTAMP' => (new \DateTime('now', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.000\Z'),
+            'Access-Control-Allow-Origin' => '*',
+        ];
+
+        return response()->json($result, 200, $responseHeaders);
+    }
+
+    /**
+     * Universal catch-all for any ABDM webhook, bridge check, or gateway probe.
+     * Ensures Gateway never receives a 404, logs everything with complete payload, and auto-routes.
+     */
+    public function handleAbdmCatchAll(Request $request): JsonResponse
+    {
+        $path = $request->path();
+        $method = $request->method();
+
+        Log::info("ABDM Webhook [Universal Catch-All]: [{$method} /{$path}]", [
+            'url' => $request->fullUrl(),
+            'headers' => $request->headers->all(),
+            'body' => $request->all() ?: $request->getContent(),
+        ]);
+
+        if ($request->isMethod('OPTIONS')) {
+            return response()->json(['status' => 'OK'], 200, [
+                'Access-Control-Allow-Origin' => '*',
+                'Access-Control-Allow-Methods' => 'POST, GET, OPTIONS, HEAD',
+                'Access-Control-Allow-Headers' => '*',
+            ]);
+        }
+
+        // If it looks like a patient share request, route to handlePatientShare
+        if (str_contains($path, 'share') && !str_contains($path, 'running-token')) {
+            return $this->handlePatientShare($request);
+        }
+
+        // If it looks like running token request, route to handleRunningTokenStatus
+        if (str_contains($path, 'running-token') || str_contains($path, 'token/status')) {
+            return $this->handleRunningTokenStatus($request);
+        }
+
+        $requestId = $request->header('REQUEST-ID')
+            ?: $request->header('request-id')
+            ?: (string) Str::uuid();
+
+        return response()->json([
+            'status' => 'SUCCESS',
+            'message' => 'ABDM callback received successfully.',
+            'response' => [
+                'requestId' => $requestId,
+            ],
+        ], 200, [
+            'Content-Type' => 'application/json',
+            'REQUEST-ID' => $requestId,
+            'TIMESTAMP' => (new \DateTime('now', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.000\Z'),
+            'Access-Control-Allow-Origin' => '*',
+        ]);
     }
 }

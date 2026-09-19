@@ -27,6 +27,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/patient/*',
             'share/*',
             'api/share/*',
+            'running-token/*',
+            'api/running-token/*',
+            'token/*',
+            'api/token/*',
+            'patient-share/*',
+            'api/patient-share/*',
+            'hip/*',
+            'api/hip/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

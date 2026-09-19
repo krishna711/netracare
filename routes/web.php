@@ -24,7 +24,15 @@ Route::get('/abdm/fhir/{id}/{type?}', [\App\Http\Controllers\AbdmFhirController:
 use App\Http\Controllers\AbdmWebhookController;
 
 Route::prefix('v3/hip')->group(function () {
-    Route::post('/patient/share', [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::match(['post', 'get', 'options', 'head'], '/patient/share', [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::match(['post', 'get', 'options', 'head'], '/patient/share/', [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::match(['post', 'get', 'options', 'head'], '/patient/running-token/status', [AbdmWebhookController::class, 'handleRunningTokenStatus']);
+    Route::match(['post', 'get', 'options', 'head'], '/patient/running-token/status/', [AbdmWebhookController::class, 'handleRunningTokenStatus']);
+    Route::match(['post', 'get', 'options', 'head'], '/running-token/status', [AbdmWebhookController::class, 'handleRunningTokenStatus']);
+    Route::match(['post', 'get', 'options', 'head'], '/running-token/status/', [AbdmWebhookController::class, 'handleRunningTokenStatus']);
+    Route::match(['post', 'get', 'options', 'head'], '/token/status', [AbdmWebhookController::class, 'handleRunningTokenStatus']);
+    Route::match(['post', 'get', 'options', 'head'], '/token/status/', [AbdmWebhookController::class, 'handleRunningTokenStatus']);
+
     Route::post('/patient/care-context/discover', [AbdmWebhookController::class, 'handleCareContextDiscover']);
     Route::post('/link/care-context/init', [AbdmWebhookController::class, 'handleLinkInit']);
     Route::post('/link/care-context/confirm', [AbdmWebhookController::class, 'handleLinkConfirm']);
@@ -47,15 +55,38 @@ $profileShareRoutes = [
     '/v1/patients/profile/share',
     '/patients/profile/share',
     '/patient/share',
+    '/hip/patient/share',
     '/v0.5/patients/profile/share',
     '/api/v3/hip/patient/share',
     '/api/v1.0/patients/profile/share',
     '/api/v1/patients/profile/share',
     '/api/patients/profile/share',
     '/api/patient/share',
+    '/api/hip/patient/share',
 ];
 
 foreach ($profileShareRoutes as $pRoute) {
-    Route::match(['post', 'get'], $pRoute, [AbdmWebhookController::class, 'handlePatientShare']);
-    Route::match(['post', 'get'], $pRoute . '/', [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::match(['post', 'get', 'options', 'head'], $pRoute, [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::match(['post', 'get', 'options', 'head'], $pRoute . '/', [AbdmWebhookController::class, 'handlePatientShare']);
+}
+
+// Running Token Status variants (both with and without /api)
+$webRunningTokenRoutes = [
+    '/running-token/status',
+    '/patient/running-token/status',
+    '/token/status',
+    '/patient-share/v3/running-token/status',
+    '/v3/hip/running-token/status',
+    '/v3/hip/patient/running-token/status',
+    '/api/running-token/status',
+    '/api/patient/running-token/status',
+    '/api/token/status',
+    '/api/patient-share/v3/running-token/status',
+    '/api/v3/hip/running-token/status',
+    '/api/v3/hip/patient/running-token/status',
+];
+
+foreach ($webRunningTokenRoutes as $wRoute) {
+    Route::match(['post', 'get', 'options', 'head'], $wRoute, [AbdmWebhookController::class, 'handleRunningTokenStatus']);
+    Route::match(['post', 'get', 'options', 'head'], $wRoute . '/', [AbdmWebhookController::class, 'handleRunningTokenStatus']);
 }

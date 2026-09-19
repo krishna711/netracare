@@ -225,7 +225,7 @@ class ScanAndShareService
         // 1. Primary: Official V3 Gateway URL (Standard for M1 in Sandbox)
         $v3Url = "{$this->client->getGatewayBaseUrl()}/patient-share/v3/on-share";
         try {
-            $responseV3 = Http::timeout(2.5)->withHeaders($headers)->post($v3Url, $payloadV3);
+            $responseV3 = Http::timeout(6.0)->withHeaders($headers)->post($v3Url, $payloadV3);
             if ($responseV3->successful()) {
                 Log::info("ABDM On-Share Acknowledgement (v3) successful [{$responseV3->status()}]");
                 return true;
@@ -239,7 +239,7 @@ class ScanAndShareService
         $bridgeUrl = rtrim(config('abdm.bridge_base_url', 'https://dev.abdm.gov.in'), '/');
         $v1Url = "{$bridgeUrl}/gateway/v1.0/patients/profile/on-share";
         try {
-            $responseV1 = Http::timeout(2.5)->withHeaders($headers)->post($v1Url, $payloadV1);
+            $responseV1 = Http::timeout(4.0)->withHeaders($headers)->post($v1Url, $payloadV1);
             if ($responseV1->successful()) {
                 Log::info("ABDM On-Share Acknowledgement (v1.0) successful [{$responseV1->status()}]");
                 return true;
@@ -252,7 +252,7 @@ class ScanAndShareService
         // 3. Fallback: Direct v1.0 without /gateway prefix
         $directV1Url = "{$bridgeUrl}/v1.0/patients/profile/on-share";
         try {
-            $responseDirect = Http::timeout(2.0)->withHeaders($headers)->post($directV1Url, $payloadV1);
+            $responseDirect = Http::timeout(3.0)->withHeaders($headers)->post($directV1Url, $payloadV1);
             if ($responseDirect->successful()) {
                 Log::info("ABDM On-Share Acknowledgement (direct v1.0) successful [{$responseDirect->status()}]");
                 return true;
@@ -262,6 +262,115 @@ class ScanAndShareService
         }
 
         Log::error("ABDM On-Share Acknowledgement could not be delivered to any gateway endpoint.");
+        return false;
+    }
+
+    /**
+     * Process running token request from ABDM Gateway / PHR App.
+     * Collection: Running token status (M1)
+     *
+     * @param array $payload
+     * @param string $requestId
+     * @return array
+     */
+    public function handleRunningTokenStatus(array $payload, string $requestId): array
+    {
+        Log::info("ABDM Scan & Share: Received running token status request [RequestID: {$requestId}]", [
+            'payload' => $payload,
+        ]);
+
+        $hipId = $payload['hipId'] ?? $this->client->getHipId();
+        $context = (string) ($payload['context'] ?? '1');
+
+        $latestToken = AbdmScanShare::whereDate('created_at', today())
+            ->whereNotNull('token_number')
+            ->latest()
+            ->value('token_number');
+        $runningTokenNumber = $latestToken ? (string) $latestToken : '100';
+        $avgTime = 3; // minutes average service time
+
+        // Dispatch async on-status acknowledgment to ABDM Gateway
+        $ackSent = false;
+        try {
+            $ackSent = $this->sendRunningTokenOnStatus($requestId, $hipId, $context, $runningTokenNumber, $avgTime);
+        } catch (\Throwable $e) {
+            Log::warning("ABDM Running Token: Could not send on-status immediately: " . $e->getMessage());
+        }
+
+        return [
+            'status' => 'SUCCESS',
+            'token' => [
+                'hipId' => $hipId,
+                'context' => $context,
+                'runningTokenNumber' => $runningTokenNumber,
+                'averageTokenServiceTimeInMinutes' => $avgTime,
+            ],
+            'response' => [
+                'requestId' => $requestId,
+            ],
+            'ack_sent' => $ackSent,
+        ];
+    }
+
+    /**
+     * Send running-token/on-status to ABDM Gateway (v3).
+     * Endpoint: POST /api/hiecm/patient-share/v3/running-token/on-status
+     *
+     * @param string $requestId
+     * @param string $hipId
+     * @param string $context
+     * @param string $runningTokenNumber
+     * @param int $averageTimeInMinutes
+     * @return bool
+     */
+    public function sendRunningTokenOnStatus(
+        string $requestId,
+        string $hipId,
+        string $context = '1',
+        string $runningTokenNumber = '100',
+        int $averageTimeInMinutes = 3
+    ): bool {
+        try {
+            $token = $this->client->getSessionToken();
+        } catch (\Throwable $e) {
+            Log::warning("ABDM Running Token: Unable to get session token: " . $e->getMessage());
+            return false;
+        }
+
+        $url = "{$this->client->getGatewayBaseUrl()}/patient-share/v3/running-token/on-status";
+        $headers = [
+            'Authorization' => 'Bearer ' . $token,
+            'Content-Type' => 'application/json',
+            'REQUEST-ID' => (string) Str::uuid(),
+            'TIMESTAMP' => $this->client->getIsoTimestamp(),
+            'X-CM-ID' => $this->client->getCmId() ?: 'sbx',
+        ];
+
+        $payload = [
+            'token' => [
+                'hipId' => $hipId,
+                'context' => (string) $context,
+                'runningTokenNumber' => (string) $runningTokenNumber,
+                'averageTokenServiceTimeInMinutes' => $averageTimeInMinutes,
+            ],
+            'response' => [
+                'requestId' => $requestId,
+            ],
+        ];
+
+        Log::info("ABDM Running Token: Sending on-status for request {$requestId} (Token: {$runningTokenNumber}) to {$url}");
+
+        try {
+            $response = Http::timeout(6.0)->withHeaders($headers)->post($url, $payload);
+            if ($response->successful()) {
+                Log::info("ABDM Running Token on-status successful [{$response->status()}]");
+                return true;
+            }
+            Log::warning("ABDM Running Token on-status returned {$response->status()}: " . $response->body());
+        } catch (\Throwable $e) {
+            Log::warning("ABDM Running Token on-status call failed: " . $e->getMessage());
+        }
+
         return false;
     }
 }
