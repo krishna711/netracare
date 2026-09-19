@@ -51,6 +51,28 @@ class AbdmBridgeService
         }
 
         if ($response->successful()) {
+            // Also ensure legacy V1 gateway endpoint has the bridge URL updated
+            try {
+                $v1Url = "{$this->client->getBridgeBaseUrl()}/gateway/v1/bridges";
+                $v1Token = null;
+                try {
+                    $v1Token = $this->client->getV05SessionToken();
+                } catch (\Throwable $e) {}
+
+                Http::timeout(15)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer ' . ($v1Token ?: $token),
+                        'Content-Type' => 'application/json',
+                        'Accept' => '*/*',
+                        'X-CM-ID' => $this->client->getCmId(),
+                    ])
+                    ->patch($v1Url, [
+                        'url' => $targetUrl,
+                    ]);
+            } catch (\Throwable $e) {
+                // Ignore legacy update failure
+            }
+
             return [
                 'status' => 'success',
                 'message' => 'Bridge URL updated successfully in ABDM Gateway V3.',
@@ -174,10 +196,17 @@ class AbdmBridgeService
         ];
 
         $attempts = [
-            // 0. Primary: NHA Milestone 1 Official Facility Sandbox Endpoint (from M1 Postman Collection)
+            // 0. Primary: NHA Milestone 1/2/3 Official Facility Sandbox Endpoints (apihspsbx)
             [
-                'label' => 'facilitysbx /MutipleHRPAddUpdateServices (M1 Postman Standard)',
-                'url' => 'https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices',
+                'label' => 'apihspsbx /v4/int/v1/bridges/MutipleHRPAddUpdateServices (M2/M3 Collection)',
+                'url' => 'https://apihspsbx.abdm.gov.in/v4/int/v1/bridges/MutipleHRPAddUpdateServices',
+                'token' => $v3Token,
+                'data' => $hrpPayload,
+                'method' => 'POST',
+            ],
+            [
+                'label' => 'apihspsbx /v1/bridges/MutipleHRPAddUpdateServices (M1/M2 Collection)',
+                'url' => 'https://apihspsbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices',
                 'token' => $v3Token,
                 'data' => $hrpPayload,
                 'method' => 'POST',
