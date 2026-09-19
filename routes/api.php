@@ -43,7 +43,19 @@ Route::prefix('v0.5')->group(function () {
     Route::post('/consents/hip/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
 });
 
-// v1.0 Scan and share
+// v1.0 & v3 Scan and share variants (under /api prefix)
 Route::prefix('v1.0')->group(function () {
-    Route::post('/patients/profile/share', [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::match(['post', 'get'], '/patients/profile/share', [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::match(['post', 'get'], '/patients/profile/share/', [AbdmWebhookController::class, 'handlePatientShare']);
 });
+
+Route::prefix('v1')->group(function () {
+    Route::match(['post', 'get'], '/patients/profile/share', [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::match(['post', 'get'], '/patients/profile/share/', [AbdmWebhookController::class, 'handlePatientShare']);
+});
+
+Route::match(['post', 'get'], '/patients/profile/share', [AbdmWebhookController::class, 'handlePatientShare']);
+Route::match(['post', 'get'], '/patients/profile/share/', [AbdmWebhookController::class, 'handlePatientShare']);
+Route::match(['post', 'get'], '/patient/share', [AbdmWebhookController::class, 'handlePatientShare']);
+Route::match(['post', 'get'], '/patient/share/', [AbdmWebhookController::class, 'handlePatientShare']);
+

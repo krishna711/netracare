@@ -40,6 +40,22 @@ Route::prefix('v0.5')->group(function () {
     Route::post('/consents/hip/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
 });
 
-Route::prefix('v1.0')->group(function () {
-    Route::post('/patients/profile/share', [AbdmWebhookController::class, 'handlePatientShare']);
-});
+// ABDM Scan & Share - Register all variations of profile share
+$profileShareRoutes = [
+    '/v3/hip/patient/share',
+    '/v1.0/patients/profile/share',
+    '/v1/patients/profile/share',
+    '/patients/profile/share',
+    '/patient/share',
+    '/v0.5/patients/profile/share',
+    '/api/v3/hip/patient/share',
+    '/api/v1.0/patients/profile/share',
+    '/api/v1/patients/profile/share',
+    '/api/patients/profile/share',
+    '/api/patient/share',
+];
+
+foreach ($profileShareRoutes as $pRoute) {
+    Route::match(['post', 'get'], $pRoute, [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::match(['post', 'get'], $pRoute . '/', [AbdmWebhookController::class, 'handlePatientShare']);
+}

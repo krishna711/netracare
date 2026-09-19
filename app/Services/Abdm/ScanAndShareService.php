@@ -162,24 +162,46 @@ class ScanAndShareService
         string $tokenNumber,
         string $context = '1'
     ): bool {
-        $token = $this->client->getSessionToken();
+        try {
+            $token = $this->client->getSessionToken();
+        } catch (\Throwable $e) {
+            Log::warning("ABDM Scan & Share: Unable to get session token for on-share: " . $e->getMessage());
+            return false;
+        }
 
-        $payload = [
+        // V3 compliant payload (per official M1 collection)
+        $payloadV3 = [
+            'acknowledgement' => [
+                'status' => 'SUCCESS',
+                'abhaAddress' => $abhaAddress,
+                'profile' => [
+                    'context' => (string) $context,
+                    'tokenNumber' => (string) $tokenNumber,
+                    'expiry' => '1800',
+                ],
+            ],
+            'response' => [
+                'requestId' => $requestId,
+            ],
+        ];
+
+        // Legacy V1.0 fallback payload
+        $payloadV1 = [
             'acknowledgement' => [
                 'status' => 'SUCCESS',
                 'abhaAddress' => $abhaAddress,
                 'healthId' => $abhaAddress,
                 'profile' => [
-                    'context' => $context,
-                    'tokenNumber' => $tokenNumber,
-                    'expiry' => '1800', // 30 minutes validity
+                    'context' => (string) $context,
+                    'tokenNumber' => (string) $tokenNumber,
+                    'expiry' => '1800',
                 ],
             ],
             'error' => null,
-            'response' => [
+            'resp' => [
                 'requestId' => $requestId,
             ],
-            'resp' => [
+            'response' => [
                 'requestId' => $requestId,
             ],
         ];
@@ -194,25 +216,10 @@ class ScanAndShareService
             'X-CM-ID' => $this->client->getCmId(),
         ];
 
-        // 1. Try V1.0 Gateway URL first (standard for ABHA app Scan & Share)
-        $bridgeUrl = rtrim(config('abdm.bridge_base_url', 'https://dev.abdm.gov.in'), '/');
-        $v1Url = "{$bridgeUrl}/gateway/v1.0/patients/profile/on-share";
-
-        try {
-            $response = Http::timeout(8)->withHeaders($headers)->post($v1Url, $payload);
-            if ($response->successful()) {
-                Log::info("ABDM On-Share Acknowledgement (v1.0) successful [{$response->status()}]");
-                return true;
-            }
-            Log::warning("ABDM On-Share v1.0 returned {$response->status()}: " . $response->body());
-        } catch (\Throwable $e) {
-            Log::warning("ABDM On-Share v1.0 call failed: " . $e->getMessage());
-        }
-
-        // 2. Try V3 Gateway URL
+        // 1. Primary: Official V3 Gateway URL (Standard for M1 in Sandbox)
         $v3Url = "{$this->client->getGatewayBaseUrl()}/patient-share/v3/on-share";
         try {
-            $responseV3 = Http::timeout(8)->withHeaders($headers)->post($v3Url, $payload);
+            $responseV3 = Http::timeout(2.5)->withHeaders($headers)->post($v3Url, $payloadV3);
             if ($responseV3->successful()) {
                 Log::info("ABDM On-Share Acknowledgement (v3) successful [{$responseV3->status()}]");
                 return true;
@@ -222,10 +229,24 @@ class ScanAndShareService
             Log::warning("ABDM On-Share v3 call failed: " . $e->getMessage());
         }
 
-        // 3. Fallback: Direct v1.0 without /gateway prefix if sandbox proxy requires it
+        // 2. Secondary: V1.0 Gateway URL
+        $bridgeUrl = rtrim(config('abdm.bridge_base_url', 'https://dev.abdm.gov.in'), '/');
+        $v1Url = "{$bridgeUrl}/gateway/v1.0/patients/profile/on-share";
+        try {
+            $responseV1 = Http::timeout(2.5)->withHeaders($headers)->post($v1Url, $payloadV1);
+            if ($responseV1->successful()) {
+                Log::info("ABDM On-Share Acknowledgement (v1.0) successful [{$responseV1->status()}]");
+                return true;
+            }
+            Log::warning("ABDM On-Share v1.0 returned {$responseV1->status()}: " . $responseV1->body());
+        } catch (\Throwable $e) {
+            Log::warning("ABDM On-Share v1.0 call failed: " . $e->getMessage());
+        }
+
+        // 3. Fallback: Direct v1.0 without /gateway prefix
         $directV1Url = "{$bridgeUrl}/v1.0/patients/profile/on-share";
         try {
-            $responseDirect = Http::timeout(8)->withHeaders($headers)->post($directV1Url, $payload);
+            $responseDirect = Http::timeout(2.0)->withHeaders($headers)->post($directV1Url, $payloadV1);
             if ($responseDirect->successful()) {
                 Log::info("ABDM On-Share Acknowledgement (direct v1.0) successful [{$responseDirect->status()}]");
                 return true;

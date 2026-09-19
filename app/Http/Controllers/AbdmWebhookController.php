@@ -37,8 +37,11 @@ class AbdmWebhookController extends Controller
     {
         $requestId = $request->header('REQUEST-ID') ?? (string) Str::uuid();
         $payload = $request->all();
+        if (empty($payload)) {
+            $payload = json_decode($request->getContent(), true) ?: [];
+        }
 
-        Log::info("ABDM Webhook: Incoming patient share", [
+        Log::info("ABDM Webhook: Incoming patient share [{$request->method()} {$request->fullUrl()}]", [
             'requestId' => $requestId,
             'headers' => $request->headers->all(),
             'payload' => $payload,
@@ -46,21 +49,45 @@ class AbdmWebhookController extends Controller
 
         try {
             $result = $this->scanShareService->processIncomingShare($payload, $requestId);
+            $tokenNumber = (string) $result['token_number'];
+
+            $responseHeaders = [
+                'Content-Type' => 'application/json',
+                'REQUEST-ID' => $requestId,
+                'TIMESTAMP' => (new \DateTime('now', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.000\Z'),
+            ];
 
             return response()->json([
                 'status' => 'SUCCESS',
                 'message' => 'Patient profile received and queued.',
-                'tokenNumber' => $result['token_number'],
-            ], 200);
+                'tokenNumber' => $tokenNumber,
+                'acknowledgement' => [
+                    'status' => 'SUCCESS',
+                    'tokenNumber' => $tokenNumber,
+                ],
+                'response' => [
+                    'requestId' => $requestId,
+                ],
+            ], 200, $responseHeaders);
         } catch (\Throwable $e) {
-            Log::error("ABDM Webhook Error: " . $e->getMessage());
+            Log::error("ABDM Webhook Error: " . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
 
             return response()->json([
                 'status' => 'ERROR',
                 'message' => $e->getMessage(),
-            ], 500);
+                'error' => [
+                    'code' => 500,
+                    'message' => $e->getMessage(),
+                ],
+            ], 200, [
+                'Content-Type' => 'application/json',
+                'REQUEST-ID' => $requestId,
+            ]);
         }
     }
+
 
     /**
      * Handle incoming patient care context discovery from ABDM Gateway.

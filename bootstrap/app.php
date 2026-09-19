@@ -19,6 +19,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/v0.5/*',
             'v1.0/*',
             'api/v1.0/*',
+            'v1/*',
+            'api/v1/*',
+            'patients/*',
+            'api/patients/*',
+            'patient/*',
+            'api/patient/*',
+            'share/*',
+            'api/share/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
