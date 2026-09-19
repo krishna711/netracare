@@ -23,16 +23,32 @@ class AbdmBridgeService
     {
         $token = $this->client->getSessionToken();
         $targetUrl = rtrim($callbackUrl, '/');
+        $bridgeId = $this->client->getClientId();
 
-        // Primary: Official ABDM Gateway V3 endpoint
+        // Primary: Official ABDM Gateway V3 endpoint (Requires bridgeId and url per Postman collection)
         $v3Url = "{$this->client->getGatewayBaseUrl()}/gateway/v3/bridge/url";
-        Log::info("ABDM Bridge: Updating bridge URL to {$targetUrl} at {$v3Url}");
+        Log::info("ABDM Bridge: Updating bridge URL to {$targetUrl} for bridge {$bridgeId} at {$v3Url}");
 
         $response = Http::timeout(25)
             ->withHeaders($this->client->getStandardHeaders($token))
             ->patch($v3Url, [
+                'bridgeId' => $bridgeId,
                 'url' => $targetUrl,
             ]);
+
+        // If gateway rejects the compound payload, try url-only payload
+        if (!$response->successful() && $response->status() !== 404) {
+            Log::info("ABDM Bridge: Trying url-only payload at {$v3Url}");
+            $altResponse = Http::timeout(25)
+                ->withHeaders($this->client->getStandardHeaders($token))
+                ->patch($v3Url, [
+                    'url' => $targetUrl,
+                ]);
+
+            if ($altResponse->successful()) {
+                $response = $altResponse;
+            }
+        }
 
         if ($response->successful()) {
             return [
@@ -158,7 +174,15 @@ class AbdmBridgeService
         ];
 
         $attempts = [
-            // 1. Primary: PUT /devservice/v1/bridges/addUpdateServices with v0.5 token (NHA Official Documentation)
+            // 0. Primary: NHA Milestone 1 Official Facility Sandbox Endpoint (from M1 Postman Collection)
+            [
+                'label' => 'facilitysbx /MutipleHRPAddUpdateServices (M1 Postman Standard)',
+                'url' => 'https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices',
+                'token' => $v3Token,
+                'data' => $hrpPayload,
+                'method' => 'POST',
+            ],
+            // 1. Secondary: PUT /devservice/v1/bridges/addUpdateServices with v0.5 token (NHA Official Documentation)
             [
                 'label' => 'devservice /addUpdateServices (PUT with v0.5 token & combined IDs)',
                 'url' => 'https://dev.abdm.gov.in/devservice/v1/bridges/addUpdateServices',
@@ -327,4 +351,34 @@ class AbdmBridgeService
         Log::error("ABDM Get Services failed: {$error}");
         throw new Exception("Failed to fetch Bridge Services ({$response->status()}): {$error}");
     }
+
+    /**
+     * Query ABDM Gateway V3 to find registered service details by HIP / Service ID.
+     * Endpoint: GET https://dev.abdm.gov.in/api/hiecm/gateway/v3/bridge-service/serviceId/{serviceId}
+     */
+    public function getServiceByServiceId(string $serviceId): array
+    {
+        $token = $this->client->getSessionToken();
+        $v3Url = "{$this->client->getGatewayBaseUrl()}/gateway/v3/bridge-service/serviceId/{$serviceId}";
+
+        Log::info("ABDM Bridge: Fetching service info for {$serviceId} from {$v3Url}");
+
+        $response = Http::timeout(20)
+            ->withHeaders($this->client->getStandardHeaders($token))
+            ->get($v3Url);
+
+        if ($response->successful()) {
+            return [
+                'status' => 'success',
+                'data' => $response->json(),
+            ];
+        }
+
+        return [
+            'status' => 'error',
+            'code' => $response->status(),
+            'message' => $response->json('message') ?? $response->body(),
+        ];
+    }
 }
+

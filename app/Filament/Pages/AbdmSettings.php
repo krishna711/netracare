@@ -275,6 +275,40 @@ class AbdmSettings extends Page implements HasForms
                             ->send();
                     }
                 }),
+
+            Action::make('checkHipStatus')
+                ->label('4. Check HIP Status in Gateway')
+                ->icon('heroicon-o-check-badge')
+                ->color('gray')
+                ->action(function (AbdmBridgeService $bridgeService, AbdmClient $client) {
+                    try {
+                        $client->loadConfig();
+                        $hipId = $this->data['hip_id'] ?? ($client->getHipId() ?: 'IN2310001444');
+                        $res = $bridgeService->getServiceByServiceId($hipId);
+
+                        if (($res['status'] ?? '') === 'success') {
+                            $data = $res['data'] ?? [];
+                            $this->bridgeServices = $data;
+                            Notification::make()
+                                ->title("HIP [{$hipId}] Recognized by Gateway!")
+                                ->body("Facility: " . ($data['name'] ?? 'N/A') . " | Bridge: " . ($data['bridgeId'] ?? 'N/A') . " | Active: " . (($data['active'] ?? false) ? 'Yes' : 'No'))
+                                ->success()
+                                ->send();
+                        } else {
+                            Notification::make()
+                                ->title("HIP [{$hipId}] Not Found in Gateway")
+                                ->body($res['message'] ?? 'Service not found in Gateway. Click "2. Register HIP & HIU Services" or link in HFR.')
+                                ->warning()
+                                ->send();
+                        }
+                    } catch (\Throwable $e) {
+                        Notification::make()
+                            ->title('Gateway Check Failed')
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
+                    }
+                }),
         ];
     }
 }
