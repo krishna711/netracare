@@ -45,7 +45,7 @@ class AbdmClient
         $this->bridgeBaseUrl = rtrim($dbSettings['abdm_bridge_url'] ?? config('abdm.bridge_base_url', 'https://dev.abdm.gov.in'), '/');
         $this->abhaBaseUrl = rtrim($dbSettings['abdm_abha_url'] ?? config('abdm.abha_base_url', 'https://abhasbx.abdm.gov.in/abha/api'), '/');
         $this->cmId = trim($dbSettings['abdm_cm_id'] ?? config('abdm.cm_id', 'sbx'));
-        $this->hipId = trim($dbSettings['abdm_hip_id'] ?? config('abdm.hip_id', ''));
+        $this->hipId = trim($dbSettings['abdm_hip_id'] ?? '') ?: (config('abdm.hip_id') ?: 'IN2310001444');
     }
 
     public function getClientId(): string

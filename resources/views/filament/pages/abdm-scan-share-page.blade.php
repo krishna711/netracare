@@ -25,6 +25,9 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                     HIP ID: <span class="font-mono font-medium text-gray-700 dark:text-gray-300">{{ $qrPayload['hip_id'] ?? 'N/A' }}</span>
                 </p>
+                <p class="text-[11px] text-gray-400 dark:text-gray-500 font-mono mt-1 break-all bg-gray-50 dark:bg-gray-800/60 p-1.5 rounded-lg select-all border border-gray-100 dark:border-gray-800">
+                    {{ $qrPayload['qr_string'] ?? '' }}
+                </p>
 
                 <div class="mt-4 w-full flex items-center justify-center gap-2">
                     <a href="{{ $qrApiUrl }}" target="_blank" download="Counter_QR.png" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">

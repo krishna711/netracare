@@ -25,19 +25,25 @@ class ScanAndShareService
      */
     public function generateCounterQrPayload(?string $counterId = null): array
     {
-        $hipId = $this->client->getHipId() ?: config('abdm.hip_id');
-        $facilityName = config('abdm.facility_name', 'Netrika Netralaya');
-        $counter = $counterId ?: config('abdm.counter_id', '1');
+        $hipId = $this->client->getHipId() ?: (config('abdm.hip_id') ?: 'IN2310001444');
+        $facilityName = config('abdm.facility_name') ?: 'Netrika Netralaya';
+        $counter = $counterId ?: (config('abdm.counter_id') ?: '1');
+
+        $isProduction = config('abdm.env') === 'production';
+        $baseUrl = $isProduction 
+            ? 'https://phr.abdm.gov.in/share-profile' 
+            : 'https://phrsbx.abdm.gov.in/share-profile';
+
+        // Official ABDM Scan & Share QR URL format
+        $qrString = "{$baseUrl}?hip-id={$hipId}&counter-id={$counter}";
 
         $qrData = [
             'hip_id' => $hipId,
             'counter_id' => (string) $counter,
             'facility_name' => $facilityName,
+            'url' => $qrString,
             'timestamp' => now()->timestamp,
         ];
-
-        // Format as JSON string for QR scanner (ABHA App format)
-        $qrString = json_encode($qrData);
 
         return [
             'hip_id' => $hipId,
