@@ -44,6 +44,7 @@ class AbdmScanSharePage extends Page implements HasTable
     protected string $view = 'filament.pages.abdm-scan-share-page';
 
     public array $qrPayload = [];
+    public string $selectedHipId = '';
 
     public static function canAccess(): bool
     {
@@ -52,7 +53,15 @@ class AbdmScanSharePage extends Page implements HasTable
 
     public function mount(ScanAndShareService $service): void
     {
-        $this->qrPayload = $service->generateCounterQrPayload();
+        $defaultHip = $service->getClient()->getHipId() ?: (config('abdm.hip_id') ?: 'IN2310001444');
+        $this->selectedHipId = $defaultHip;
+        $this->qrPayload = $service->generateCounterQrPayload(null, $this->selectedHipId);
+    }
+
+    public function switchHip(string $hipId, ScanAndShareService $service): void
+    {
+        $this->selectedHipId = trim($hipId);
+        $this->qrPayload = $service->generateCounterQrPayload(null, $this->selectedHipId);
     }
 
     public function table(Table $table): Table

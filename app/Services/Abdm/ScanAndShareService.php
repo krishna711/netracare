@@ -17,15 +17,21 @@ class ScanAndShareService
         $this->client = $client;
     }
 
+    public function getClient(): AbdmClient
+    {
+        return $this->client;
+    }
+
     /**
      * Generate the Counter QR code data string according to ABDM specs.
      *
      * @param string|null $counterId
+     * @param string|null $overrideHipId
      * @return array QR string and metadata
      */
-    public function generateCounterQrPayload(?string $counterId = null): array
+    public function generateCounterQrPayload(?string $counterId = null, ?string $overrideHipId = null): array
     {
-        $hipId = $this->client->getHipId() ?: (config('abdm.hip_id') ?: 'IN2310001444');
+        $hipId = $overrideHipId ?: ($this->client->getHipId() ?: (config('abdm.hip_id') ?: 'IN2310001444'));
         $facilityName = config('abdm.facility_name') ?: 'Netrika Netralaya';
         $counter = $counterId ?: (config('abdm.counter_id') ?: '1');
 

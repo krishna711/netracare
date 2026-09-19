@@ -4,9 +4,28 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             {{-- QR Code Display --}}
             <div class="md:col-span-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm flex flex-col items-center justify-center text-center">
-                <div class="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 rounded-full text-xs font-semibold uppercase tracking-wider mb-4">
+                <div class="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 rounded-full text-xs font-semibold uppercase tracking-wider mb-3">
                     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                     Counter {{ $qrPayload['counter_id'] ?? '1' }} Active
+                </div>
+
+                {{-- HIP ID Toggle --}}
+                <div class="mb-4 w-full">
+                    <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 text-center">Select Facility HIP ID</p>
+                    <div class="flex items-center justify-center p-1 bg-gray-100 dark:bg-gray-800 rounded-xl text-xs gap-1 border border-gray-200/60 dark:border-gray-700">
+                        <button 
+                            type="button"
+                            wire:click="switchHip('IN2310001444')" 
+                            class="flex-1 py-1 px-2 rounded-lg transition-all {{ ($selectedHipId ?? '') === 'IN2310001444' ? 'bg-white dark:bg-gray-700 text-primary-600 shadow-sm font-bold' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900' }}">
+                            IN2310001444
+                        </button>
+                        <button 
+                            type="button"
+                            wire:click="switchHip('IN2310014055')" 
+                            class="flex-1 py-1 px-2 rounded-lg transition-all {{ ($selectedHipId ?? '') === 'IN2310014055' ? 'bg-white dark:bg-gray-700 text-primary-600 shadow-sm font-bold' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900' }}">
+                            IN2310014055
+                        </button>
+                    </div>
                 </div>
 
                 {{-- Render QR Code via SVG API or data --}}
@@ -23,14 +42,14 @@
                     {{ $qrPayload['facility_name'] ?? 'Netrika Netralaya' }}
                 </h4>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    HIP ID: <span class="font-mono font-medium text-gray-700 dark:text-gray-300">{{ $qrPayload['hip_id'] ?? 'N/A' }}</span>
+                    Active HIP ID: <span class="font-mono font-bold text-primary-600 dark:text-primary-400">{{ $qrPayload['hip_id'] ?? 'N/A' }}</span>
                 </p>
                 <p class="text-[11px] text-gray-400 dark:text-gray-500 font-mono mt-1 break-all bg-gray-50 dark:bg-gray-800/60 p-1.5 rounded-lg select-all border border-gray-100 dark:border-gray-800">
                     {{ $qrPayload['qr_string'] ?? '' }}
                 </p>
 
                 <div class="mt-4 w-full flex items-center justify-center gap-2">
-                    <a href="{{ $qrApiUrl }}" target="_blank" download="Counter_QR.png" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">
+                    <a href="{{ $qrApiUrl }}" target="_blank" download="Counter_QR_{{ $qrPayload['hip_id'] ?? 'hip' }}.png" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">
                         <x-filament::icon icon="heroicon-o-arrow-down-tray" class="w-4 h-4" />
                         Download QR for Printing
                     </a>
