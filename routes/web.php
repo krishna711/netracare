@@ -90,3 +90,17 @@ foreach ($webRunningTokenRoutes as $wRoute) {
     Route::match(['post', 'get', 'options', 'head'], $wRoute, [AbdmWebhookController::class, 'handleRunningTokenStatus']);
     Route::match(['post', 'get', 'options', 'head'], $wRoute . '/', [AbdmWebhookController::class, 'handleRunningTokenStatus']);
 }
+
+// Additional Gateway callback routes (with and without /api)
+$extraGatewayRoutes = [
+    '/v3/consent/request/hip/notify',
+    '/v3/consent/request/hiu/notify',
+    '/api/v3/consent/request/hip/notify',
+    '/api/v3/consent/request/hiu/notify',
+    '/v3/hiu/patient/on-share',
+    '/api/v3/hiu/patient/on-share',
+];
+foreach ($extraGatewayRoutes as $eRoute) {
+    Route::match(['post', 'get', 'options', 'head'], $eRoute, [AbdmWebhookController::class, 'handleConsentNotify']);
+    Route::match(['post', 'get', 'options', 'head'], $eRoute . '/', [AbdmWebhookController::class, 'handleConsentNotify']);
+}

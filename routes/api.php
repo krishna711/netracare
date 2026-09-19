@@ -24,18 +24,28 @@ Route::prefix('v3/hip')->group(function () {
     Route::post('/link/care-context/init', [AbdmWebhookController::class, 'handleLinkInit']);
     Route::post('/link/care-context/confirm', [AbdmWebhookController::class, 'handleLinkConfirm']);
     Route::post('/health-information/request', [AbdmWebhookController::class, 'handleHealthInfoRequest']);
-    Route::post('/consent/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+    Route::match(['post', 'get', 'options', 'head'], '/consent/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+    Route::match(['post', 'get', 'options', 'head'], '/consent/request/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+    Route::match(['post', 'get', 'options', 'head'], '/consent/request/hip/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
 });
+
+// v3 Consent Request Notification direct paths (as observed from ABDM Gateway)
+Route::match(['post', 'get', 'options', 'head'], '/v3/consent/request/hip/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+Route::match(['post', 'get', 'options', 'head'], '/v3/consent/request/hip/notify/', [AbdmWebhookController::class, 'handleConsentNotify']);
+Route::match(['post', 'get', 'options', 'head'], '/v3/consent/request/hiu/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+Route::match(['post', 'get', 'options', 'head'], '/v3/consent/request/hiu/notify/', [AbdmWebhookController::class, 'handleConsentNotify']);
 
 // v3 HIU Endpoints (Milestone 3 - Consent Management & Health Data Flow)
 Route::prefix('v3/hiu')->group(function () {
+    Route::match(['post', 'get', 'options', 'head'], '/patient/on-share', [AbdmWebhookController::class, 'handlePatientShare']);
+    Route::match(['post', 'get', 'options', 'head'], '/patient/on-share/', [AbdmWebhookController::class, 'handlePatientShare']);
     Route::post('/consent/request/on-init', [AbdmWebhookController::class, 'handleConsentOnInit']);
     Route::post('/consent/on-init', [AbdmWebhookController::class, 'handleConsentOnInit']);
     Route::post('/consent/request/on-status', [AbdmWebhookController::class, 'handleConsentOnStatus']);
     Route::post('/consent/on-status', [AbdmWebhookController::class, 'handleConsentOnStatus']);
-    Route::post('/consent/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
-    Route::post('/consent/request/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
-    Route::post('/consent/request/hiu/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+    Route::match(['post', 'get', 'options', 'head'], '/consent/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+    Route::match(['post', 'get', 'options', 'head'], '/consent/request/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
+    Route::match(['post', 'get', 'options', 'head'], '/consent/request/hiu/notify', [AbdmWebhookController::class, 'handleConsentNotify']);
     Route::post('/consent/on-fetch', [AbdmWebhookController::class, 'handleConsentOnFetch']);
     Route::post('/consent/request/on-fetch', [AbdmWebhookController::class, 'handleConsentOnFetch']);
     Route::post('/health-information/on-request', [AbdmWebhookController::class, 'handleHealthInfoOnRequest']);
